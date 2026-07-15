@@ -27,7 +27,9 @@ enum SigV4 {
         let datestamp = String(format: "%04d%02d%02d", comps.year!, comps.month!, comps.day!)
         let amzdate = String(format: "%@T%02d%02d%02dZ", datestamp, comps.hour!, comps.minute!, comps.second!)
 
-        let host = url.host ?? ""
+        //
+        //
+        let host = url.port.map { "\(url.host ?? ""):\($0)" } ?? (url.host ?? "")
         let payloadHash = sha256Hex(body)
 
         //
@@ -45,7 +47,11 @@ enum SigV4 {
         let signedHeaders = signed.map(\.0).joined(separator: ";")
         let canonicalHeaders = signed.map { "\($0.0):\($0.1.trimmingCharacters(in: .whitespaces))\n" }.joined()
 
-        let canonicalURI = url.path.isEmpty ? "/" : url.path
+        //
+        //
+        //
+        let encodedPath = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath ?? ""
+        let canonicalURI = encodedPath.isEmpty ? "/" : encodedPath
         let canonicalQuery = canonicalQueryString(url)
 
         let canonicalRequest = [

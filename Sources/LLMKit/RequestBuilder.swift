@@ -173,6 +173,19 @@ enum RequestBuilder {
 
     ///
     ///
+    static func appendBeta(_ existing: String, _ addition: String) -> String {
+        func tokens(_ s: String) -> [String] {
+            s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
+        var values = tokens(existing)
+        for token in tokens(addition) where !values.contains(token) {
+            values.append(token)
+        }
+        return values.joined(separator: ",")
+    }
+
+    ///
+    ///
     static func buildAuthHeaders(config: ProviderSpec, apiKey: String) -> [(String, String)] {
         var headers: [(String, String)] = []
         switch config.authScheme {
