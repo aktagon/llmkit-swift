@@ -370,6 +370,131 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("speech-openai", try capturedBody())
     }
 
+    // MARK: - Video generation (ADR-034; asynchronous submit). The wire suite
+    // asserts ONLY the submit body — `submit(prompt)` performs the submit POST,
+    // the mock answers with the provider's submit-response handle id so submit
+    // returns a VideoJob (discarded), and only the captured outbound bytes are
+    // asserted. Inputs mirror the WIRE_VIDEO_* wire_inputs constants. The canned
+    // response carries every provider's handle field (mirror of the Rust driver's
+    // capture_request_body): request_id / task_id / name / invocationArn /
+    // output.task_id / Resp.video_id.
+    private static let videoSubmitResponse = Data(
+        #"{"request_id":"vid_test","task_id":"vid_test","id":"vid_test","name":"models/veo-test/operations/op_test","invocationArn":"arn:test:async-invoke/op_test","output":{"task_id":"vid_test","task_status":"PENDING"},"Resp":{"video_id":318633193768896}}"#.utf8
+    )
+
+    private func videoClient(_ provider: ProviderName) -> Client {
+        MockURLProtocol.reset()
+        MockURLProtocol.responseBody = Self.videoSubmitResponse
+        MockURLProtocol.responseStatusCode = 200
+        return Client(provider: provider, apiKey: "key", session: MockURLProtocol.makeSession())
+    }
+
+    // VID-007: Grok video-submit body {model, prompt}.
+    func testVideoGrok() async throws {
+        _ = try await videoClient(.grok).video
+            .model("grok-imagine-video")
+            .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
+        try assertGolden("video-grok", try capturedBody())
+    }
+
+    // BUG-010: Grok image-to-video submit body {model, prompt, image:{url}} — the
+    // seed frame inlines as a data URL at image.url (the Grok image-edit encoding).
+    func testVideoGrokI2V() async throws {
+        _ = try await videoClient(.grok).video
+            .model("grok-imagine-video")
+            .image("image/png", try imageBytes())
+            .submit("Animate the still: a slow cinematic push-in as clouds drift past the peaks")
+        try assertGolden("video-grok-i2v", try capturedBody())
+    }
+
+    // ADR-034 fan-out: Zhipu CogVideoX shares the {model, prompt} arm.
+    func testVideoZhipu() async throws {
+        _ = try await videoClient(.zhipu).video
+            .model("cogvideox-3")
+            .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
+        try assertGolden("video-zhipu", try capturedBody())
+    }
+
+    // ADR-034 fan-out: Vidu (Shengshu) shares the {model, prompt} arm.
+    func testVideoVidu() async throws {
+        _ = try await videoClient(.vidu).video
+            .model("viduq3-pro")
+            .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
+        try assertGolden("video-vidu", try capturedBody())
+    }
+
+    // ADR-034 fan-out: PixVerse's five-field body {model, prompt, duration,
+    // quality, aspect_ratio}. The per-request Ai-trace-id header is a runtime UUID
+    // (asserted in the VideoTests unit test, not the golden).
+    func testVideoPixVerse() async throws {
+        _ = try await videoClient(.pixverse).video
+            .model("v4.5")
+            .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
+        try assertGolden("video-pixverse", try capturedBody())
+    }
+
+    // ADR-034 fan-out: Together shares the {model, prompt} arm.
+    func testVideoTogether() async throws {
+        _ = try await videoClient(.together).video
+            .model("minimax/video-01-director")
+            .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
+        try assertGolden("video-together", try capturedBody())
+    }
+
+    // ADR-034 fan-out: Qwen (DashScope) nests the prompt under {model,
+    // input:{prompt}} and requires the load-bearing X-DashScope-Async: enable
+    // header (asserted in-driver, mirror of the Anthropic beta-header assert).
+    func testVideoQwen() async throws {
+        _ = try await videoClient(.qwen).video
+            .model("wan2.2-t2v-plus")
+            .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
+        XCTAssertEqual(MockURLProtocol.capturedHeaders["x-dashscope-async"], "enable")
+        try assertGolden("video-qwen", try capturedBody())
+    }
+
+    // ADR-034 fan-out: MiniMax shares the {model, prompt} arm (the two-hop result
+    // retrieve is delivery-side, covered by the unit tests).
+    func testVideoMiniMax() async throws {
+        _ = try await videoClient(.minimax).video
+            .model("MiniMax-Hailuo-2.3")
+            .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
+        try assertGolden("video-minimax", try capturedBody())
+    }
+
+    // ADR-034 fan-out: Google Veo carries the model in the submit PATH, so the
+    // body is the nested {instances:[{prompt}]} with NO model field.
+    func testVideoGoogleVeo() async throws {
+        _ = try await videoClient(.google).video
+            .model("veo-3.1-generate-preview")
+            .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
+        try assertGolden("video-google", try capturedBody())
+    }
+
+    // ADR-034 fan-out: AWS Bedrock Nova Reel carries the model in the BODY
+    // (modelId), nests the prompt under modelInput, and the caller S3 URI under
+    // outputDataConfig. The submit is SigV4-signed; the mock captures the outbound
+    // body regardless of the (keyless) signature.
+    func testVideoBedrock() async throws {
+        withBedrockEnv()
+        _ = try await videoClient(.bedrock).video
+            .model("amazon.nova-reel-v1:0")
+            .outputURI("s3://llmkit-wire-fixtures/out/")
+            .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
+        try assertGolden("video-bedrock", try capturedBody())
+    }
+
+    // ADR-034 delivery-mode phase: Vertex Veo's submit body is byte-identical to
+    // the Gemini Veo golden (model in the PATH, not the body).
+    func testVideoVertexVeo() async throws {
+        // Vertex's base carries {location}/{project_id} placeholders (the
+        // caller-substituted seam); override with the mock base so the URL is
+        // valid (the mock intercepts regardless; only the body is asserted).
+        _ = try await videoClient(.vertex).baseURL("https://mock.local").video
+            .model("veo-3.1-generate-preview")
+            .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
+        try assertGolden("video-vertex", try capturedBody())
+    }
+
     // MARK: - Bedrock Converse (SigV4 signing; body is asserted, signature is not)
 
     func testBedrockChat() async throws {

@@ -77,6 +77,36 @@ struct HTTPClient: Sendable {
         return (http.statusCode, data)
     }
 
+    /// GET a URL signed with AWS SigV4 (Bedrock async-invoke poll). The empty
+    /// body is signed too; `callerHeaders` (ADR-052) ride alongside unsigned.
+    func getTextSigV4(
+        url: String,
+        accessKey: String,
+        secretKey: String,
+        sessionToken: String,
+        region: String,
+        service: String,
+        callerHeaders: [(String, String)]
+    ) async throws -> (statusCode: Int, data: Data) {
+        guard let endpoint = URL(string: url) else {
+            throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "GET"
+        let signed = SigV4.sign(
+            method: "GET", url: endpoint, body: Data(),
+            accessKey: accessKey, secretKey: secretKey, sessionToken: sessionToken,
+            region: region, service: service, contentType: "application/json"
+        )
+        for (name, value) in signed { request.setValue(value, forHTTPHeaderField: name) }
+        for (name, value) in callerHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw LLMKitError.transport("non-HTTP response")
+        }
+        return (http.statusCode, data)
+    }
+
     /// GET a URL and return the status code + raw response bytes. Used by the
     /// batch poll + result-fetch hops.
     func getText(url: String, headers: [(String, String)]) async throws -> (statusCode: Int, data: Data) {
