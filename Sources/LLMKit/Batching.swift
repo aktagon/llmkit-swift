@@ -55,6 +55,7 @@ enum Batch {
         http: HTTPClient,
         baseURLOverride: String?,
         model: String,
+        system: String?,
         prompts: [String],
         options: PromptOptions
     ) async throws -> BatchJob {
@@ -70,7 +71,10 @@ enum Batch {
         let body: JSONValue
         switch batch.inputMode {
         case .fileReferenceInput:
-            let jsonl = try buildJSONL(prompts: prompts, config: config, apiKey: apiKey, model: model, options: options, batch: batch)
+            let jsonl = try await buildJSONL(
+                prompts: prompts, config: config, apiKey: apiKey, model: model,
+                system: system, options: options, batch: batch, http: http, baseURLOverride: baseURLOverride
+            )
             let fileId = try await uploadFile(base: base, headers: headers, batch: batch, data: jsonl, http: http)
             body = .object([
                 (batch.inputField, .string(fileId)),
@@ -86,9 +90,13 @@ enum Batch {
             // provider 400s (mirror of Rust batch.rs build_batch_body).
             var beta = ""
             for (index, prompt) in prompts.enumerated() {
-                let (itemBody, itemHeaders) = try RequestBuilder.buildBody(
+                var (itemBody, itemHeaders) = try RequestBuilder.buildBody(
                     config: config, wireShape: config.chatWireShape, apiKey: apiKey,
-                    model: model, system: nil, msgs: [.text(role: "user", text: prompt)], tools: [], options: options
+                    model: model, system: system, msgs: [.text(role: "user", text: prompt)], tools: [], options: options
+                )
+                try await CachingRuntime.apply(
+                    &itemBody, provider: config.name, model: model, apiKey: apiKey,
+                    options: options, config: config, http: http, baseURLOverride: baseURLOverride
                 )
                 if let value = itemHeaders.first(where: { $0.0.caseInsensitiveCompare("anthropic-beta") == .orderedSame })?.1 {
                     beta = RequestBuilder.appendBeta(beta, value)
@@ -127,13 +135,17 @@ enum Batch {
 
     private static func buildJSONL(
         prompts: [String], config: ProviderSpec, apiKey: String, model: String,
-        options: PromptOptions, batch: BatchDef
-    ) throws -> Data {
+        system: String?, options: PromptOptions, batch: BatchDef, http: HTTPClient, baseURLOverride: String?
+    ) async throws -> Data {
         var lines = ""
         for (index, prompt) in prompts.enumerated() {
-            let (body, _) = try RequestBuilder.buildBody(
+            var (body, _) = try RequestBuilder.buildBody(
                 config: config, wireShape: config.chatWireShape, apiKey: apiKey,
-                model: model, system: nil, msgs: [.text(role: "user", text: prompt)], tools: [], options: options
+                model: model, system: system, msgs: [.text(role: "user", text: prompt)], tools: [], options: options
+            )
+            try await CachingRuntime.apply(
+                &body, provider: config.name, model: model, apiKey: apiKey,
+                options: options, config: config, http: http, baseURLOverride: baseURLOverride
             )
             let line = JSONValue.object([
                 ("custom_id", .string("req-\(index)")),
