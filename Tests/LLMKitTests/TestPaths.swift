@@ -57,6 +57,18 @@ enum TestPaths {
         try Data(projection.serialized().utf8).write(to: file)
     }
 
+    /// Write a telemetry-wire artifact to
+    /// `target/wire/telemetry/<fixture>/swift.json` (the OTLP payload verbatim),
+    /// mirroring the Rust driver's `rust.json` output.
+    static func writeTelemetryArtifact(fixture: String, payload: String) throws {
+        let directory = repoRoot()
+            .appendingPathComponent("target/wire/telemetry")
+            .appendingPathComponent(fixture)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("swift.json")
+        try Data(payload.utf8).write(to: file)
+    }
+
     /// Write a lifecycle-wire artifact to
     /// `target/wire/lifecycle/<fixture>/swift.json` (the normalized JobStatus
     /// projection), mirroring the Rust driver's `rust.json` output.
