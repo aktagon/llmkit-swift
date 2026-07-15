@@ -159,4 +159,66 @@ final class RequestWireTests: XCTestCase {
             .model("claude-sonnet-4-6").schema(Self.schemaNested).prompt(promptNested)
         try assertGolden("structured-output-nested-anthropic", try capturedBody())
     }
+
+    // MARK: - Streaming (BUG-028: stream_options.include_usage on the body)
+
+    func testStreamOpenAI() async throws {
+        _ = try? await client(.openai).text.model("gpt-4o-mini").stream("Say hello.") { _ in }
+        try assertGolden("stream-openai", try capturedBody())
+    }
+
+    // MARK: - Agent tool definitions (per wire shape)
+
+    private static let toolSchema =
+        "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}"
+    private static let toolPrompt = "What is the weather in Helsinki right now?"
+
+    private func weatherTool() throws -> Tool {
+        Tool(
+            name: "get_weather",
+            description: "Get the current weather for a city.",
+            schema: try JSONValue.parse(Self.toolSchema),
+            run: { _ in "" }
+        )
+    }
+
+    func testToolDefOpenAI() async throws {
+        _ = try await client(.openai).agent().addTool(try weatherTool()).prompt(Self.toolPrompt)
+        try assertGolden("tooldef-openai", try capturedBody())
+    }
+
+    func testToolDefAnthropic() async throws {
+        _ = try await client(.anthropic).agent().addTool(try weatherTool()).prompt(Self.toolPrompt)
+        try assertGolden("tooldef-anthropic", try capturedBody())
+    }
+
+    func testToolDefGoogle() async throws {
+        _ = try await client(.google).agent().addTool(try weatherTool()).prompt(Self.toolPrompt)
+        try assertGolden("tooldef-google", try capturedBody())
+    }
+
+    func testToolDefBedrock() async throws {
+        withBedrockEnv()
+        _ = try await client(.bedrock).agent().addTool(try weatherTool()).prompt(Self.toolPrompt)
+        try assertGolden("tooldef-bedrock", try capturedBody())
+    }
+
+    // MARK: - Bedrock Converse (SigV4 signing; body is asserted, signature is not)
+
+    func testBedrockChat() async throws {
+        withBedrockEnv()
+        _ = try await client(.bedrock).text
+            .maxTokens(256).temperature(0.7).topP(0.9).stopSequences(["END_OF_ANSWER"])
+            .prompt("Name the capital of Finland in one word, then write END_OF_ANSWER.")
+        try assertGolden("bedrock-chat", try capturedBody())
+    }
+
+    /// Bedrock SigV4 reads its region + secret key from the environment; the
+    /// access key is the client api key. Deterministic dummy values — the
+    /// signature is time-dependent and NOT asserted (only the body is).
+    private func withBedrockEnv() {
+        setenv("AWS_REGION", "us-east-1", 1)
+        setenv("AWS_SECRET_ACCESS_KEY", "test-secret", 1)
+        setenv("AWS_SESSION_TOKEN", "", 1)
+    }
 }
