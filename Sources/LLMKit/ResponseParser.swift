@@ -10,15 +10,20 @@ enum ResponseParser {
         }
         let raw = try JSONValue.parse(text)
 
+        // Cache-token and cost paths live in the generated Caching / Response
+        // fact tables (mirroring Rust), not on ProviderSpec.
+        let (cacheWritePath, cacheReadPath) = cacheUsagePaths(config.name)
+        let costPath = usageCostPath(config.name)
+
         let usage = Usage(
             input: raw.intValue(at: config.usageInputPath),
             output: raw.intValue(at: config.usageOutputPath),
-            cacheWrite: config.cacheWritePath.isEmpty ? 0 : raw.intValue(at: config.cacheWritePath),
-            cacheRead: config.cacheReadPath.isEmpty ? 0 : raw.intValue(at: config.cacheReadPath),
+            cacheWrite: cacheWritePath.isEmpty ? 0 : raw.intValue(at: cacheWritePath),
+            cacheRead: cacheReadPath.isEmpty ? 0 : raw.intValue(at: cacheReadPath),
             reasoning: config.reasoningTokensPath.isEmpty ? 0 : raw.intValue(at: config.reasoningTokensPath),
-            cost: config.usageCostPath.isEmpty
+            cost: costPath.isEmpty
                 ? 0.0
-                : raw.doubleValue(at: config.usageCostPath) * config.usageCostScale
+                : raw.doubleValue(at: costPath) * usageCostScale(config.name)
         )
 
         return Response(

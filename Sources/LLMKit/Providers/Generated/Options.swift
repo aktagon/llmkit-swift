@@ -22,6 +22,31 @@ struct OptionDef: Sendable {
     let defaultJSONKey: String
 }
 
+/// One provider's supported option -> wire-key binding.
+struct SupportedOptionDef: Sendable {
+    let key: OptionKey
+    let jsonKey: String
+}
+
+/// A provider-level option override (ADR-024): a different wire key,
+/// an allowed-value whitelist, and/or extra JSON merged at option or
+/// request-root level.
+struct OptionOverrideDef: Sendable {
+    let key: OptionKey
+    let jsonKey: String
+    let allowedValues: [String]
+    let extraFieldsJSON: String
+    let rootExtraFieldsJSON: String
+}
+
+/// A per-model option-key override (ADR-024); precedence lives in the resolver.
+struct ModelOptionOverrideDef: Sendable {
+    let matcherKind: String  // "id" | "pattern"
+    let matcherValue: String
+    let key: OptionKey
+    let jsonKey: String
+}
+
 let allOptions: [OptionDef] = [
     OptionDef(
         key: .frequencyPenalty,
@@ -74,12 +99,6 @@ let allOptions: [OptionDef] = [
         defaultJSONKey: "top_p"
     ),
 ]
-
-/// One provider's supported option -> wire-key binding.
-struct SupportedOptionDef: Sendable {
-    let key: OptionKey
-    let jsonKey: String
-}
 
 func supportedOptions(_ provider: ProviderName) -> [SupportedOptionDef] {
     switch provider {
@@ -374,5 +393,135 @@ func supportedOptions(_ provider: ProviderName) -> [SupportedOptionDef] {
             SupportedOptionDef(key: .temperature, jsonKey: "temperature"),
             SupportedOptionDef(key: .topP, jsonKey: "top_p"),
         ]
+    }
+}
+
+func optionOverrides(_ provider: ProviderName) -> [OptionOverrideDef] {
+    switch provider {
+    case .ai21: return []
+    case .anthropic:
+        return [
+            OptionOverrideDef(
+                key: .reasoningEffort,
+                jsonKey: "output_config.effort",
+                allowedValues: ["low", "medium", "high", "xhigh", "max"],
+                extraFieldsJSON: "",
+                rootExtraFieldsJSON: "{\"thinking\":{\"type\":\"adaptive\"}}"
+            ),
+            OptionOverrideDef(
+                key: .thinkingBudget,
+                jsonKey: "thinking.budget_tokens",
+                allowedValues: [],
+                extraFieldsJSON: "{\"type\":\"enabled\"}",
+                rootExtraFieldsJSON: ""
+            ),
+        ]
+    case .assemblyai: return []
+    case .azure: return []
+    case .bedrock: return []
+    case .cerebras: return []
+    case .cohere: return []
+    case .deepseek: return []
+    case .doubao: return []
+    case .ernie: return []
+    case .fireworks: return []
+    case .google:
+        return [
+            OptionOverrideDef(
+                key: .reasoningEffort,
+                jsonKey: "thinkingConfig.thinkingLevel",
+                allowedValues: ["low", "high"],
+                extraFieldsJSON: "",
+                rootExtraFieldsJSON: ""
+            ),
+        ]
+    case .grok: return []
+    case .groq: return []
+    case .inworld: return []
+    case .jan: return []
+    case .llamacpp: return []
+    case .lmstudio: return []
+    case .minimax: return []
+    case .mistral: return []
+    case .moonshot: return []
+    case .ollama: return []
+    case .openai:
+        return [
+            OptionOverrideDef(
+                key: .reasoningEffort,
+                jsonKey: "reasoning_effort",
+                allowedValues: ["low", "medium", "high"],
+                extraFieldsJSON: "",
+                rootExtraFieldsJSON: ""
+            ),
+        ]
+    case .openrouter: return []
+    case .perplexity: return []
+    case .pixverse: return []
+    case .qwen: return []
+    case .recraft: return []
+    case .sambanova: return []
+    case .together: return []
+    case .vertex: return []
+    case .vidu: return []
+    case .vllm: return []
+    case .workersai: return []
+    case .yi: return []
+    case .zhipu: return []
+    }
+}
+
+func modelOptionOverrides(_ provider: ProviderName) -> [ModelOptionOverrideDef] {
+    switch provider {
+    case .ai21: return []
+    case .anthropic: return []
+    case .assemblyai: return []
+    case .azure: return []
+    case .bedrock: return []
+    case .cerebras: return []
+    case .cohere: return []
+    case .deepseek: return []
+    case .doubao: return []
+    case .ernie: return []
+    case .fireworks: return []
+    case .google: return []
+    case .grok: return []
+    case .groq: return []
+    case .inworld: return []
+    case .jan: return []
+    case .llamacpp: return []
+    case .lmstudio: return []
+    case .minimax: return []
+    case .mistral: return []
+    case .moonshot: return []
+    case .ollama: return []
+    case .openai:
+        return [
+            ModelOptionOverrideDef(
+                matcherKind: "pattern",
+                matcherValue: "gpt-5*",
+                key: .maxTokens,
+                jsonKey: "max_completion_tokens"
+            ),
+            ModelOptionOverrideDef(
+                matcherKind: "pattern",
+                matcherValue: "o*",
+                key: .maxTokens,
+                jsonKey: "max_completion_tokens"
+            ),
+        ]
+    case .openrouter: return []
+    case .perplexity: return []
+    case .pixverse: return []
+    case .qwen: return []
+    case .recraft: return []
+    case .sambanova: return []
+    case .together: return []
+    case .vertex: return []
+    case .vidu: return []
+    case .vllm: return []
+    case .workersai: return []
+    case .yi: return []
+    case .zhipu: return []
     }
 }
