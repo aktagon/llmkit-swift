@@ -42,7 +42,7 @@ enum Streamer {
 
         if !(200..<300).contains(statusCode) {
             var raw = ""
-            for try await line in lines { raw += line }
+            for try await line in lines { raw += line + "\n" }
             throw ResponseParser.parseError(config: config, statusCode: statusCode, body: Data(raw.utf8))
         }
 
