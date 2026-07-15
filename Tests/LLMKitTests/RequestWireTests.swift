@@ -352,6 +352,24 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("image-edit-google-flash", try capturedBody())
     }
 
+    // MARK: - Speech generation (TTS). Inputs mirror the WIRE_SPEECH_* wire_inputs
+    // constants; the two shapes are the flat-JSON Inworld body (Basic auth) and
+    // the flat-JSON OpenAI body.
+
+    func testSpeechInworld() async throws {
+        _ = try await client(.inworld).speech
+            .model("inworld-tts-2").voice("Dennis")
+            .generate("Hello from llmkit.")
+        try assertGolden("speech-inworld", try capturedBody())
+    }
+
+    func testSpeechOpenAI() async throws {
+        _ = try await client(.openai).speech
+            .model("gpt-4o-mini-tts").voice("alloy")
+            .generate("Hello from llmkit.")
+        try assertGolden("speech-openai", try capturedBody())
+    }
+
     // MARK: - Bedrock Converse (SigV4 signing; body is asserted, signature is not)
 
     func testBedrockChat() async throws {

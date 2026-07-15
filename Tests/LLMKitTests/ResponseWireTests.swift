@@ -132,4 +132,49 @@ final class ResponseWireTests: XCTestCase {
     func testImageVertex() async throws {
         try await driveImage(shape: "image-vertex", provider: .vertex, model: "imagen-3.0-generate-002")
     }
+
+    /// Speech variant: feed an anchored TTS reply (`bodies/<shape>.json`, an
+    /// Inworld base64-envelope body) through the real `Speech.generate` path and
+    /// assert the decoded `SpeechResponse` projects to the media discriminant
+    /// `{kind, mimeType, byteLen}` (RWR-004) — the same body must decode to the
+    /// same audio across all four SDKs.
+    private func driveSpeech(
+        shape: String, provider: ProviderName, model: String, voice: String
+    ) async throws {
+        let body = try Data(contentsOf: TestPaths.testdata("wire/response/v1/bodies/\(shape).json"))
+        MockURLProtocol.reset()
+        MockURLProtocol.responseBody = body
+        MockURLProtocol.responseStatusCode = 200
+
+        let client = Client(provider: provider, apiKey: "key", session: MockURLProtocol.makeSession())
+        let response = try await client.speech.model(model).voice(voice).generate("ping")
+
+        let projection = JSONValue.object([
+            ("content", .object([
+                ("byteLen", .int(Int64(response.audio.bytes.count))),
+                ("kind", .string("speech")),
+                ("mimeType", .string(response.audio.mimeType)),
+            ])),
+            ("error", .null),
+            ("finishReason", .string(response.finishReason)),
+            ("usage", .object([
+                ("cacheRead", .int(Int64(response.usage.cacheRead))),
+                ("cacheWrite", .int(Int64(response.usage.cacheWrite))),
+                ("cost", .double(response.usage.cost)),
+                ("input", .int(Int64(response.usage.input))),
+                ("output", .int(Int64(response.usage.output))),
+                ("reasoning", .int(Int64(response.usage.reasoning))),
+            ])),
+        ])
+
+        try TestPaths.writeResponseArtifact(shape: shape, projection: projection)
+        let goldenText = try String(
+            contentsOf: TestPaths.testdata("wire/response/v1/\(shape).json"), encoding: .utf8
+        )
+        XCTAssertEqual(projection, try JSONValue.parse(goldenText), "\(shape) projection differs from shared golden")
+    }
+
+    func testSpeechInworld() async throws {
+        try await driveSpeech(shape: "speech-inworld", provider: .inworld, model: "inworld-tts-2", voice: "Dennis")
+    }
 }
