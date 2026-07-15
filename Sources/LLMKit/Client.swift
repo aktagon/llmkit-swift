@@ -48,6 +48,16 @@ public struct Client: Sendable {
     }
 
     ///
+    public var speech: Speech {
+        Speech(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+    }
+
+    ///
+    public var music: Music {
+        Music(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+    }
+
+    ///
     public func agent() -> Agent {
         Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
     }
