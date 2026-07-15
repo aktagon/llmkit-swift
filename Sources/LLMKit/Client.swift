@@ -64,6 +64,15 @@ public struct Client: Sendable {
     }
 
     ///
+    ///
+    ///
+    ///
+    ///
+    public var transcription: Transcription {
+        Transcription(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+    }
+
+    ///
     public func agent() -> Agent {
         Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
     }

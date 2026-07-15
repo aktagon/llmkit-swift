@@ -127,10 +127,15 @@ struct HTTPClient: Sendable {
 
     ///
     ///
+    ///
+    ///
+    ///
+    ///
+    ///
     func postMultipart(
         url: String,
         fields: [(String, String)],
-        file: (field: String, filename: String, data: Data),
+        file: (field: String, filename: String, contentType: String, data: Data),
         headers: [(String, String)]
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
@@ -146,7 +151,7 @@ struct HTTPClient: Sendable {
         }
         append("--\(boundary)\r\n")
         append("Content-Disposition: form-data; name=\"\(file.field)\"; filename=\"\(file.filename)\"\r\n")
-        append("Content-Type: application/octet-stream\r\n\r\n")
+        append("Content-Type: \(file.contentType)\r\n\r\n")
         payload.append(file.data)
         append("\r\n--\(boundary)--\r\n")
 
@@ -155,6 +160,32 @@ struct HTTPClient: Sendable {
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         request.httpBody = payload
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw LLMKitError.transport("non-HTTP response")
+        }
+        return (http.statusCode, data)
+    }
+
+    ///
+    ///
+    ///
+    func postBytes(
+        url: String,
+        body: Data,
+        headers: [(String, String)]
+    ) async throws -> (statusCode: Int, data: Data) {
+        guard let endpoint = URL(string: url) else {
+            throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        for (name, value) in headers {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        request.httpBody = body
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
