@@ -179,7 +179,7 @@ enum Batch {
         let (status, body) = try await http.postMultipart(
             url: base + "/v1/files",
             fields: [("purpose", batch.filePurpose)],
-            file: ("file", "batch_input.jsonl", data),
+            file: ("file", "batch_input.jsonl", "application/octet-stream", data),
             headers: headers
         )
         guard (200..<300).contains(status) else {

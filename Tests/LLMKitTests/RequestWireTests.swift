@@ -495,6 +495,107 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-vertex", try capturedBody())
     }
 
+    // MARK: - Transcription (ADR-048 / ADR-051; the [Part] container). Inputs
+    // mirror the WIRE_TRANSCRIPTION_* wire_inputs constants.
+
+    private static let transcriptionAudioURL = "https://storage.example.com/meeting-2026-06-24.mp3"
+    private static let transcriptionOpenAIModel = "whisper-1"
+    private static let transcriptionOpenAIMime = "audio/mpeg"
+
+    // ADR-048: AssemblyAI transcription submit body {audio_url}. The async
+    // TranscriptionJob is discarded; only the outbound submit bytes are asserted.
+    // The upload hop is bytes-only and is not exercised here (a URL part skips it).
+    func testTranscriptionAssemblyAI() async throws {
+        let c = client(.assemblyai)
+        // The submit response must carry an id so submit does not throw; the
+        // assertion is on the captured submit request body, not the reply.
+        MockURLProtocol.responseBody = Data(#"{"id":"transcript_abc123"}"#.utf8)
+        _ = try await c.transcription.submit([Part.audio(url: Self.transcriptionAudioURL)])
+        try assertGolden("transcription-assemblyai", try capturedBody())
+    }
+
+    // ADR-051: OpenAI SYNCHRONOUS transcription is the first multipart/form-data
+    // request body in the Swift SDK. The golden is the canonical multipart
+    // descriptor (OQ-3); the driver decodes its ACTUAL encoded multipart body
+    // (captured bytes + boundary from the Content-Type header) into ordered fields
+    // and asserts value-equal to the golden.
+    func testTranscriptionOpenAI() async throws {
+        let c = client(.openai)
+        MockURLProtocol.responseBody = Data(#"{"text":"Hello world."}"#.utf8)
+        _ = try await c.transcription
+            .model(Self.transcriptionOpenAIModel)
+            .transcribe([Part.audioBytes(mimeType: Self.transcriptionOpenAIMime, data: Data("fake-audio".utf8))])
+        let descriptor = try Self.multipartToDescriptor(
+            body: try XCTUnwrap(MockURLProtocol.capturedBody),
+            contentType: try XCTUnwrap(MockURLProtocol.capturedHeaders["content-type"])
+        )
+        try assertGolden("transcription-openai", descriptor)
+    }
+
+    /// Decodes an encoded `multipart/form-data` body into the canonical descriptor
+    /// the cross-SDK comparator asserts (ADR-051 OQ-3): an ordered list of form
+    /// fields. Text fields emit `{name, value}`; the file part keeps its filename +
+    /// content-type but its bytes become the fixed sentinel "<audio-bytes>". Parses
+    /// the ACTUAL captured bytes + boundary, keeping the descriptor independent of
+    /// the golden. Port of the Rust `multipart_to_descriptor` (request_wire.rs).
+    static func multipartToDescriptor(body: Data, contentType: String) -> JSONValue {
+        // Boundary from the Content-Type header (`multipart/form-data; boundary=…`).
+        var boundary = ""
+        if let range = contentType.range(of: "boundary=") {
+            boundary = String(contentType[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        }
+        let text = String(decoding: body, as: UTF8.self)
+        let delim = "--\(boundary)"
+        var fields: [JSONValue] = []
+        for rawSeg in text.components(separatedBy: delim) {
+            // CRLF is a single Swift grapheme cluster, so drop ONE Character (the
+            // "\r\n" cluster), never a fixed count of two — the latter would eat the
+            // following byte and corrupt the header/value split.
+            var seg = rawSeg
+            if seg.hasPrefix("\r\n") { seg = String(seg.dropFirst()) }
+            if seg.isEmpty || seg.hasPrefix("--") { continue } // preamble or closing delimiter
+            guard let sep = seg.range(of: "\r\n\r\n") else { continue }
+            let headerBlock = String(seg[seg.startIndex..<sep.lowerBound])
+            var value = String(seg[sep.upperBound...])
+            if value.hasSuffix("\r\n") { value = String(value.dropLast()) }
+            var name = ""
+            var filename: String?
+            var partContentType: String?
+            for header in headerBlock.components(separatedBy: "\r\n") {
+                let lower = header.lowercased()
+                if lower.hasPrefix("content-disposition:") {
+                    name = extractQuoted(header, "name=") ?? ""
+                    filename = extractQuoted(header, "filename=")
+                } else if lower.hasPrefix("content-type:"), let colon = header.firstIndex(of: ":") {
+                    partContentType = String(header[header.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+                }
+            }
+            if let fname = filename {
+                fields.append(.object([
+                    ("name", .string(name)),
+                    ("filename", .string(fname)),
+                    ("contentType", .string(partContentType ?? "")),
+                    ("bytes", .string("<audio-bytes>")),
+                ]))
+            } else {
+                fields.append(.object([("name", .string(name)), ("value", .string(value))]))
+            }
+        }
+        return .object([("_encoding", .string("multipart/form-data")), ("fields", .array(fields))])
+    }
+
+    /// Pulls the quoted value following `key` (e.g. `name="model"` -> "model").
+    /// Leftmost match, so `name=` on the file part resolves the standalone field
+    /// name, not the tail of `filename=`.
+    private static func extractQuoted(_ haystack: String, _ key: String) -> String? {
+        guard let start = haystack.range(of: key) else { return nil }
+        let rest = haystack[start.upperBound...]
+        guard rest.first == "\"" else { return nil }
+        let afterQuote = rest.dropFirst()
+        guard let end = afterQuote.firstIndex(of: "\"") else { return nil }
+        return String(afterQuote[afterQuote.startIndex..<end])
+    }
+
     // MARK: - Bedrock Converse (SigV4 signing; body is asserted, signature is not)
 
     func testBedrockChat() async throws {
