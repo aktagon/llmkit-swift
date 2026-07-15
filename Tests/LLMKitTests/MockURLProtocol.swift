@@ -8,12 +8,26 @@ final class MockURLProtocol: URLProtocol {
     static var capturedHeaders: [String: String] = [:]
     static var responseStatusCode = 200
     static var responseBody = Data()
+    /// When set, successive requests are served the queued bodies in order (the
+    /// last entry repeats). Drives the two-hop batch poll + result fetch.
+    static var responseSequence: [Data]?
+    private static var sequenceIndex = 0
 
     static func reset() {
         capturedBody = nil
         capturedHeaders = [:]
         responseStatusCode = 200
         responseBody = Data()
+        responseSequence = nil
+        sequenceIndex = 0
+    }
+
+    /// The body to serve for the current request, advancing the sequence.
+    private static func nextBody() -> Data {
+        guard let sequence = responseSequence, !sequence.isEmpty else { return responseBody }
+        let index = min(sequenceIndex, sequence.count - 1)
+        sequenceIndex += 1
+        return sequence[index]
     }
 
     /// A session whose only transport is this mock protocol.
@@ -44,7 +58,7 @@ final class MockURLProtocol: URLProtocol {
            ) {
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         }
-        client?.urlProtocol(self, didLoad: MockURLProtocol.responseBody)
+        client?.urlProtocol(self, didLoad: MockURLProtocol.nextBody())
         client?.urlProtocolDidFinishLoading(self)
     }
 

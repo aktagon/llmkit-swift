@@ -11,6 +11,12 @@ public enum LLMKitError: Error, Equatable, Sendable {
     case transport(String)
     /// The response body could not be decoded.
     case decoding(String)
+    /// A capability or provider path is not supported / a job terminated in
+    /// failure (mirror of Rust's `Error::Unsupported`).
+    case unsupported(String)
+    /// The job poll loop exceeded its wall-clock backstop (ADR-063 POLL-008).
+    /// Distinguishable from a provider-reported failure by construction.
+    case pollTimeout(provider: String, id: String)
 }
 
 extension LLMKitError: LocalizedError {
@@ -24,6 +30,10 @@ extension LLMKitError: LocalizedError {
             return "transport: \(message)"
         case let .decoding(message):
             return "decoding: \(message)"
+        case let .unsupported(message):
+            return message
+        case let .pollTimeout(provider, id):
+            return "\(provider): job \(id) timed out"
         }
     }
 }

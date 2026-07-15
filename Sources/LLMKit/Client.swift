@@ -41,6 +41,11 @@ public struct Client: Sendable {
     public var text: Text {
         Text(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
     }
+
+    /// A fresh tool-using agent (the one stateful builder, ADR-066 SWIFT-004).
+    public func agent() -> Agent {
+        Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+    }
 }
 
 /// Immutable, clone-on-chain builder for text generation.
@@ -109,7 +114,7 @@ public struct Text: Sendable {
     public func prompt(_ userPrompt: String) async throws -> Response {
         let config = providerConfig(provider)
         let (wireShape, endpoint) = try RequestBuilder.resolveChatProtocol(config: config, token: options.proto)
-        let model = try resolveModel(config)
+        let model = try RequestBuilder.resolveModel(config, modelOverride)
 
         let (body, headers) = try RequestBuilder.buildBody(
             config: config,
@@ -117,31 +122,48 @@ public struct Text: Sendable {
             apiKey: apiKey,
             model: model,
             system: systemPrompt,
-            userPrompt: userPrompt,
+            msgs: [.text(role: "user", text: userPrompt)],
+            tools: [],
             options: options
         )
         let url = RequestBuilder.buildURL(
             config: config, endpoint: endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
         )
 
-        let (statusCode, data) = try await http.postJSON(url: url, body: body, headers: headers)
+        let (statusCode, data) = try await RequestBuilder.send(
+            config: config, url: url, body: body, headers: headers, apiKey: apiKey, http: http
+        )
         guard (200..<300).contains(statusCode) else {
             throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
         }
         return try ResponseParser.parse(config: config, body: data)
     }
 
-    /// The chosen model, or the provider default; errors when neither exists
-    /// (ADR-031 honest no-default contract).
-    func resolveModel(_ config: ProviderSpec) throws -> String {
-        if let modelOverride { return modelOverride }
-        if config.defaultModel.isEmpty {
-            throw LLMKitError.validation(
-                field: "model",
-                message: "no model chosen and \"\(config.slug)\" declares no default"
-            )
+    /// Stream a single-turn prompt, invoking `onDelta` per text chunk, and return
+    /// the assembled response (ADR-064: stream is a text execution mode).
+    @discardableResult
+    public func stream(_ userPrompt: String, _ onDelta: (String) -> Void) async throws -> Response {
+        let config = providerConfig(provider)
+        let model = try RequestBuilder.resolveModel(config, modelOverride)
+        return try await Streamer.run(
+            config: config, apiKey: apiKey, model: model, system: systemPrompt,
+            msgs: [.text(role: "user", text: userPrompt)], options: options,
+            http: http, baseURLOverride: baseURLOverride, onDelta: onDelta
+        )
+    }
+
+    /// Submit a batch of single-turn prompts (ADR-064: batch is a text execution
+    /// mode, parallel to stream) and return the live `BatchJob`.
+    public func batch(_ prompts: String...) async throws -> BatchJob {
+        let config = providerConfig(provider)
+        guard options.proto.isEmpty else {
+            throw LLMKitError.validation(field: "protocol", message: "batch supports only the default chat protocol")
         }
-        return config.defaultModel
+        let model = try RequestBuilder.resolveModel(config, modelOverride)
+        return try await Batch.submit(
+            config: config, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
+            model: model, prompts: prompts, options: options
+        )
     }
 
     /// Clone-on-chain helper: copy, mutate, return.
