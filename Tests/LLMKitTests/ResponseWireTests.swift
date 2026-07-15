@@ -177,4 +177,49 @@ final class ResponseWireTests: XCTestCase {
     func testSpeechInworld() async throws {
         try await driveSpeech(shape: "speech-inworld", provider: .inworld, model: "inworld-tts-2", voice: "Dennis")
     }
+
+    /// Transcription variant: feed an anchored OpenAI verbose_json reply through
+    /// the real synchronous `transcribe` path and assert the decoded
+    /// `TranscriptionResponse` projects to the transcript discriminant
+    /// `{kind, segments, text}` (ADR-065 / ADR-048) — the same body must decode to
+    /// the same transcript across all four SDKs.
+    private func driveTranscription(shape: String, provider: ProviderName, model: String) async throws {
+        let body = try Data(contentsOf: TestPaths.testdata("wire/response/v1/bodies/\(shape).json"))
+        MockURLProtocol.reset()
+        MockURLProtocol.responseBody = body
+        MockURLProtocol.responseStatusCode = 200
+
+        let client = Client(provider: provider, apiKey: "key", session: MockURLProtocol.makeSession())
+        let response = try await client.transcription
+            .model(model)
+            .transcribe([Part.audioBytes(mimeType: "audio/mpeg", data: Data("fake-audio".utf8))])
+
+        let projection = JSONValue.object([
+            ("content", .object([
+                ("kind", .string("transcript")),
+                ("segments", .int(Int64(response.segments.count))),
+                ("text", .string(response.text)),
+            ])),
+            ("error", .null),
+            ("finishReason", .string("")),
+            ("usage", .object([
+                ("cacheRead", .int(Int64(response.usage.cacheRead))),
+                ("cacheWrite", .int(Int64(response.usage.cacheWrite))),
+                ("cost", .double(response.usage.cost)),
+                ("input", .int(Int64(response.usage.input))),
+                ("output", .int(Int64(response.usage.output))),
+                ("reasoning", .int(Int64(response.usage.reasoning))),
+            ])),
+        ])
+
+        try TestPaths.writeResponseArtifact(shape: shape, projection: projection)
+        let goldenText = try String(
+            contentsOf: TestPaths.testdata("wire/response/v1/\(shape).json"), encoding: .utf8
+        )
+        XCTAssertEqual(projection, try JSONValue.parse(goldenText), "\(shape) projection differs from shared golden")
+    }
+
+    func testTranscriptionOpenAI() async throws {
+        try await driveTranscription(shape: "transcription-openai", provider: .openai, model: "whisper-1")
+    }
 }
