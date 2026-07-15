@@ -203,6 +203,32 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("tooldef-bedrock", try capturedBody())
     }
 
+    // MARK: - Caching (Anthropic explicit cache_control on the system prefix)
+
+    private static let cachingSystem = "a long stable system prefix"
+    private static let cachingPrompt = "hi"
+
+    func testCachingTextAnthropic() async throws {
+        _ = try await client(.anthropic).text
+            .system(Self.cachingSystem).caching().prompt(Self.cachingPrompt)
+        try assertGolden("caching-text-anthropic", try capturedBody())
+    }
+
+    func testCachingAgentAnthropic() async throws {
+        _ = try await client(.anthropic).agent()
+            .system(Self.cachingSystem).caching().prompt(Self.cachingPrompt)
+        try assertGolden("caching-agent-anthropic", try capturedBody())
+    }
+
+    func testCachingBatchAnthropic() async throws {
+        let c = client(.anthropic)
+        // The batch CREATE response must carry an id so submit does not throw;
+        // the assertion is on the captured CREATE request body, not the reply.
+        MockURLProtocol.responseBody = Data("{\"id\":\"batch_1\"}".utf8)
+        _ = try await c.text.system(Self.cachingSystem).caching().batch(Self.cachingPrompt)
+        try assertGolden("caching-batch-anthropic", try capturedBody())
+    }
+
     // MARK: - Bedrock Converse (SigV4 signing; body is asserted, signature is not)
 
     func testBedrockChat() async throws {
