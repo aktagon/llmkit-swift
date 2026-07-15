@@ -63,6 +63,15 @@ public struct Client: Sendable {
         Video(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
     }
 
+    /// The speech-to-text (transcription) builder (ADR-048 / ADR-051). `submit`
+    /// starts an asynchronous job and returns a live `TranscriptionJob`
+    /// (AssemblyAI); `transcribe` runs a synchronous request and returns the
+    /// transcript directly (OpenAI). The two shapes dispatch on the generated
+    /// transcription config, never the provider name.
+    public var transcription: Transcription {
+        Transcription(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+    }
+
     /// A fresh tool-using agent (the one stateful builder, ADR-066 SWIFT-004).
     public func agent() -> Agent {
         Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
