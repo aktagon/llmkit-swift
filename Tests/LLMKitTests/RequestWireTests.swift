@@ -312,6 +312,46 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("caching-batch-anthropic", try capturedBody())
     }
 
+    // MARK: - Image generation (JSON bodies only; multipart edits are a WIRE-008
+    // documented exclusion). Inputs mirror the WIRE_IMAGE_* wire_inputs constants.
+
+    func testImageGenGoogleFlash() async throws {
+        _ = try await client(.google).image
+            .model("gemini-3.1-flash-image-preview").aspectRatio("16:9").imageSize("2K")
+            .generate("A lighthouse on a rocky coastline at dusk")
+        try assertGolden("image-gen-google-flash", try capturedBody())
+    }
+
+    func testImageGenGooglePro() async throws {
+        _ = try await client(.google).image
+            .model("gemini-3-pro-image-preview").aspectRatio("4:3").imageSize("1K").includeText()
+            .generate("A watercolor map of the Baltic Sea")
+        try assertGolden("image-gen-google-pro", try capturedBody())
+    }
+
+    func testImageGenOpenAI() async throws {
+        _ = try await client(.openai).image
+            .model("gpt-image-2").imageSize("1024x1024").quality("low")
+            .outputFormat("png").background("opaque").count(1)
+            .generate("A minimalist line drawing of a sailboat")
+        try assertGolden("image-gen-openai", try capturedBody())
+    }
+
+    func testImageGenRecraft() async throws {
+        _ = try await client(.recraft).image
+            .model("recraftv3").imageSize("1024x1024").count(1)
+            .generate("A minimalist line drawing of a sailboat")
+        try assertGolden("image-gen-recraft", try capturedBody())
+    }
+
+    func testImageEditGoogleFlash() async throws {
+        let png = try XCTUnwrap(Data(base64Encoded: Self.imageBase64))
+        _ = try await client(.google).image
+            .model("gemini-3.1-flash-image-preview").image("image/png", png)
+            .generate("Recolor the square to deep blue")
+        try assertGolden("image-edit-google-flash", try capturedBody())
+    }
+
     // MARK: - Bedrock Converse (SigV4 signing; body is asserted, signature is not)
 
     func testBedrockChat() async throws {
