@@ -33,14 +33,18 @@ enum RequestBuilder {
         token == "responses" ? "ChatResponsesOpenAI" : nil
     }
 
-    /// Construct the request body + headers for a single-turn chat request.
+    /// Construct the request body + headers for a chat request. `msgs` is the
+    /// internal message list (a single user turn on the Text path, the full
+    /// history on the Agent path); `tools` serializes tool definitions when the
+    /// caller registered any. Mirror of Rust's `build_request`.
     static func buildBody(
         config: ProviderSpec,
         wireShape: String,
         apiKey: String,
         model: String,
         system: String?,
-        userPrompt: String,
+        msgs: [Transforms.Msg],
+        tools: [Tool],
         options: PromptOptions
     ) throws -> (body: JSONValue, headers: [(String, String)]) {
         var body: [(String, JSONValue)] = []
@@ -77,8 +81,9 @@ enum RequestBuilder {
         }
 
         Transforms.applyMessageShape(
-            body: &body, userPrompt: userPrompt, system: system, wireShape: wireShape, config: config
+            body: &body, msgs: msgs, system: system, wireShape: wireShape, config: config
         )
+        Transforms.applyToolDefs(&body, config, tools)
 
         // Options. When the provider wraps options (Google's generationConfig),
         // the generation params + max-token key nest inside the wrapper; root
@@ -123,6 +128,47 @@ enum RequestBuilder {
         }
 
         return (.object(body), headers)
+    }
+
+    /// The chosen model, or the provider default; errors when neither exists
+    /// (ADR-031 honest no-default contract).
+    static func resolveModel(_ config: ProviderSpec, _ override: String?) throws -> String {
+        if let override { return override }
+        if config.defaultModel.isEmpty {
+            throw LLMKitError.validation(
+                field: "model",
+                message: "no model chosen and \"\(config.slug)\" declares no default"
+            )
+        }
+        return config.defaultModel
+    }
+
+    /// Send a chat request, dispatching on the auth scheme: a SigV4 provider
+    /// (Bedrock) signs the exact bytes and reads its credentials from the
+    /// environment (ADR-052); every other provider posts with the auth headers.
+    static func send(
+        config: ProviderSpec,
+        url: String,
+        body: JSONValue,
+        headers: [(String, String)],
+        apiKey: String,
+        http: HTTPClient
+    ) async throws -> (statusCode: Int, data: Data) {
+        guard config.authScheme == "SigV4" else {
+            return try await http.postJSON(url: url, body: body, headers: headers)
+        }
+        let env = ProcessInfo.processInfo.environment
+        guard let region = env[config.regionEnvVar] else {
+            throw LLMKitError.validation(field: "provider", message: "missing env var \(config.regionEnvVar)")
+        }
+        guard let secretKey = env[config.secretKeyEnvVar] else {
+            throw LLMKitError.validation(field: "provider", message: "missing env var \(config.secretKeyEnvVar)")
+        }
+        let sessionToken = config.sessionTokenEnvVar.isEmpty ? "" : (env[config.sessionTokenEnvVar] ?? "")
+        return try await http.postJSONSigV4(
+            url: url, body: body, accessKey: apiKey, secretKey: secretKey,
+            sessionToken: sessionToken, region: region, service: config.serviceName, callerHeaders: []
+        )
     }
 
     /// Provider auth + required headers, dispatched on the generated
