@@ -58,6 +58,12 @@ public struct Client: Sendable {
     }
 
     ///
+    ///
+    public var video: Video {
+        Video(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+    }
+
+    ///
     public func agent() -> Agent {
         Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
     }
