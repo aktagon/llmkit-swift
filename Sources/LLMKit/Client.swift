@@ -47,6 +47,16 @@ public struct Client: Sendable {
         Image(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
     }
 
+    /// The speech-generation (text-to-speech) builder.
+    public var speech: Speech {
+        Speech(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+    }
+
+    /// The music-generation builder.
+    public var music: Music {
+        Music(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+    }
+
     /// A fresh tool-using agent (the one stateful builder, ADR-066 SWIFT-004).
     public func agent() -> Agent {
         Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
