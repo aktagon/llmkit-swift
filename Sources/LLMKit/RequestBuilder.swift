@@ -118,6 +118,19 @@ enum RequestBuilder {
             addStructuredOutput(&body, &headers, schema: schema, provider: config.name)
         }
 
+        // BUG-017: a text request referencing an uploaded file emits an Anthropic
+        // `{"type":"document","source":{"type":"file",...}}` block, which the
+        // Messages API rejects unless the files-api beta rides along. Compose it
+        // with any existing anthropic-beta (e.g. the structured-output beta) —
+        // comma-separated, deduped — never overwriting.
+        if Transforms.hasFileParts(msgs), let upload = fileUploadConfig(config.name), !upload.betaHeader.isEmpty {
+            if let index = headers.firstIndex(where: { $0.0.caseInsensitiveCompare("anthropic-beta") == .orderedSame }) {
+                headers[index].1 = appendBeta(headers[index].1, upload.betaHeader)
+            } else {
+                headers.append(("anthropic-beta", upload.betaHeader))
+            }
+        }
+
         // ADR-055 Responses body fixup: the output-token cap is named
         // `max_output_tokens` (not `max_tokens`) on the Responses envelope.
         if wireShape == "ChatResponsesOpenAI" {
