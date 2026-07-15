@@ -203,6 +203,89 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("tooldef-bedrock", try capturedBody())
     }
 
+    // MARK: - Media Parts on the text path (ADR-060: vision image + file refs)
+
+    /// The shared 1x1 PNG the other SDKs feed, decoded to bytes for `.image`.
+    private static let imageBase64 =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4YWQEAALyAS2saifrAAAAAElFTkSuQmCC"
+    private func imageBytes() throws -> Data { try XCTUnwrap(Data(base64Encoded: Self.imageBase64)) }
+
+    func testOpenAITextImage() async throws {
+        _ = try await client(.openai).text
+            .model("gpt-4o").image("image/png", try imageBytes())
+            .prompt("Describe the attached image in one sentence.")
+        try assertGolden("openai-text-image", try capturedBody())
+    }
+
+    func testAnthropicTextImage() async throws {
+        _ = try await client(.anthropic).text
+            .model("claude-opus-4-8").image("image/png", try imageBytes())
+            .prompt("Describe the attached image in one sentence.")
+        try assertGolden("anthropic-text-image", try capturedBody())
+    }
+
+    func testGoogleTextImage() async throws {
+        _ = try await client(.google).text
+            .model("gemini-2.5-flash").image("image/png", try imageBytes())
+            .prompt("Describe the attached image in one sentence.")
+        try assertGolden("google-text-image", try capturedBody())
+    }
+
+    func testBedrockTextImage() async throws {
+        withBedrockEnv()
+        _ = try await client(.bedrock).text
+            .model("anthropic.claude-sonnet-4-20250514-v1:0").image("image/png", try imageBytes())
+            .prompt("Describe the attached image in one sentence.")
+        try assertGolden("bedrock-text-image", try capturedBody())
+    }
+
+    func testOpenAITextDocument() async throws {
+        _ = try await client(.openai).text
+            .model("gpt-4o").file("file-9aXr2bQ7m1Tn")
+            .prompt("Summarize the attached document in three sentences.")
+        try assertGolden("openai-text-document", try capturedBody())
+    }
+
+    func testAnthropicTextDocument() async throws {
+        _ = try await client(.anthropic).text
+            .model("claude-opus-4-8").file("file_011CMZq8h5VnVe8jL3qK7p2R")
+            .prompt("Summarize the attached document in three sentences.")
+        try assertGolden("anthropic-text-document", try capturedBody())
+        // BUG-017: a file-referencing Anthropic request must carry the files-api
+        // beta; golden-locked across all SDKs via anthropic-text-document.headers.json.
+        XCTAssertEqual(MockURLProtocol.capturedHeaders["anthropic-beta"], "files-api-2025-04-14")
+        try TestPaths.writeRequestHeaders(fixture: "anthropic-text-document", headers: MockURLProtocol.capturedHeaders)
+    }
+
+    func testAnthropicSchemaDocument() async throws {
+        let schema = "{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}},\"additionalProperties\":false}"
+        _ = try await client(.anthropic).text
+            .model("claude-opus-4-8").schema(schema).file("file_011CMZq8h5VnVe8jL3qK7p2R")
+            .prompt("Summarize the attached document as structured data.")
+        try assertGolden("anthropic-schema-document", try capturedBody())
+        // BUG-017 compose path: the structured-output beta and the files-api beta
+        // compose into one comma-separated anthropic-beta, deduped.
+        XCTAssertEqual(
+            MockURLProtocol.capturedHeaders["anthropic-beta"],
+            "structured-outputs-2025-11-13,files-api-2025-04-14"
+        )
+        try TestPaths.writeRequestHeaders(fixture: "anthropic-schema-document", headers: MockURLProtocol.capturedHeaders)
+    }
+
+    func testBatchMultimodalAnthropic() async throws {
+        let c = client(.anthropic)
+        MockURLProtocol.responseBody = Data("{\"id\":\"batch_1\"}".utf8)
+        _ = try await c.text
+            .model("claude-sonnet-4-6")
+            .file("file_011CMZq8h5VnVe8jL3qK7p2R")
+            .image("image/png", try imageBytes())
+            .batch("Summarize the attached document and describe the image in one sentence.")
+        try assertGolden("batch-multimodal-anthropic", try capturedBody())
+        // The batch CREATE request lifts the per-item files-api beta (BUG-017).
+        XCTAssertEqual(MockURLProtocol.capturedHeaders["anthropic-beta"], "files-api-2025-04-14")
+        try TestPaths.writeRequestHeaders(fixture: "batch-multimodal-anthropic", headers: MockURLProtocol.capturedHeaders)
+    }
+
     // MARK: - Caching (Anthropic explicit cache_control on the system prefix)
 
     private static let cachingSystem = "a long stable system prefix"

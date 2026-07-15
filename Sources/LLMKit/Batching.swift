@@ -57,6 +57,8 @@ enum Batch {
         model: String,
         system: String?,
         prompts: [String],
+        images: [InputImage] = [],
+        files: [FileRef] = [],
         options: PromptOptions
     ) async throws -> BatchJob {
         guard let batch = batchConfig(config.name) else {
@@ -73,7 +75,8 @@ enum Batch {
         case .fileReferenceInput:
             let jsonl = try await buildJSONL(
                 prompts: prompts, config: config, apiKey: apiKey, model: model,
-                system: system, options: options, batch: batch, http: http, baseURLOverride: baseURLOverride
+                system: system, images: images, files: files, options: options,
+                batch: batch, http: http, baseURLOverride: baseURLOverride
             )
             let fileId = try await uploadFile(base: base, headers: headers, batch: batch, data: jsonl, http: http)
             body = .object([
@@ -92,7 +95,8 @@ enum Batch {
             for (index, prompt) in prompts.enumerated() {
                 var (itemBody, itemHeaders) = try RequestBuilder.buildBody(
                     config: config, wireShape: config.chatWireShape, apiKey: apiKey,
-                    model: model, system: system, msgs: [.text(role: "user", text: prompt)], tools: [], options: options
+                    model: model, system: system, msgs: itemMsgs(prompt, images: images, files: files),
+                    tools: [], options: options
                 )
                 try await CachingRuntime.apply(
                     &itemBody, provider: config.name, model: model, apiKey: apiKey,
@@ -133,15 +137,26 @@ enum Batch {
         return BatchJob(handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride)
     }
 
+    /// The per-item user turn — a media turn when the builder carried image/file
+    /// parts (ADR-060), else a plain text turn. Batch applies the builder's media
+    /// to every item (the ADR-064 `batch(prompts...)` shape carries builder-level
+    /// config uniformly).
+    private static func itemMsgs(_ prompt: String, images: [InputImage], files: [FileRef]) -> [Transforms.Msg] {
+        if images.isEmpty, files.isEmpty { return [.text(role: "user", text: prompt)] }
+        return [.media(role: "user", text: prompt, images: images, files: files)]
+    }
+
     private static func buildJSONL(
         prompts: [String], config: ProviderSpec, apiKey: String, model: String,
-        system: String?, options: PromptOptions, batch: BatchDef, http: HTTPClient, baseURLOverride: String?
+        system: String?, images: [InputImage], files: [FileRef], options: PromptOptions,
+        batch: BatchDef, http: HTTPClient, baseURLOverride: String?
     ) async throws -> Data {
         var lines = ""
         for (index, prompt) in prompts.enumerated() {
             var (body, _) = try RequestBuilder.buildBody(
                 config: config, wireShape: config.chatWireShape, apiKey: apiKey,
-                model: model, system: system, msgs: [.text(role: "user", text: prompt)], tools: [], options: options
+                model: model, system: system, msgs: itemMsgs(prompt, images: images, files: files),
+                tools: [], options: options
             )
             try await CachingRuntime.apply(
                 &body, provider: config.name, model: model, apiKey: apiKey,
