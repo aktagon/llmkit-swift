@@ -9,6 +9,9 @@ public struct Client: Sendable {
     let apiKey: String
     let baseURLOverride: String?
     let http: HTTPClient
+    /// Middleware seeded into every capability builder at construction (ADR-054):
+    /// the telemetry export hook rides this seam so each builder emits one span.
+    let defaultMiddleware: [MiddlewareFn]
 
     /// Create a client for a provider. `session` is injected so callers (and
     /// tests) control the transport.
@@ -17,13 +20,18 @@ public struct Client: Sendable {
         self.apiKey = apiKey
         self.baseURLOverride = nil
         self.http = HTTPClient(session: session)
+        self.defaultMiddleware = []
     }
 
-    private init(provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient) {
+    private init(
+        provider: ProviderName, apiKey: String, baseURLOverride: String?,
+        http: HTTPClient, defaultMiddleware: [MiddlewareFn]
+    ) {
         self.provider = provider
         self.apiKey = apiKey
         self.baseURLOverride = baseURLOverride
         self.http = http
+        self.defaultMiddleware = defaultMiddleware
     }
 
     /// Convenience constructor for OpenAI.
@@ -34,17 +42,36 @@ public struct Client: Sendable {
     /// Override the provider base URL — the caller-substituted seam for
     /// account/project/region-in-URL providers (ADR-035) and the test transport.
     public func baseURL(_ url: String) -> Client {
-        Client(provider: provider, apiKey: apiKey, baseURLOverride: url, http: http)
+        Client(
+            provider: provider, apiKey: apiKey, baseURLOverride: url,
+            http: http, defaultMiddleware: defaultMiddleware
+        )
+    }
+
+    /// Enable opt-in telemetry on this client (ADR-054/ADR-059). The export hook
+    /// rides the middleware seam, so every capability builder that carries it
+    /// (text/agent/image/music/video) emits one OTEL span on the post phase.
+    /// The honest contract (TEL-017) is upheld by the type system: `Telemetry`
+    /// has no default sink, so an enabled-but-no-export config cannot be built.
+    public func addTelemetry(_ telemetry: Telemetry) -> Client {
+        Client(
+            provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride,
+            http: http, defaultMiddleware: defaultMiddleware + [TelemetryRuntime.makeMiddleware(telemetry)]
+        )
     }
 
     /// The text-generation builder.
     public var text: Text {
-        Text(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        var builder = Text(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { builder = builder.addMiddleware(hook) }
+        return builder
     }
 
     /// The image-generation builder.
     public var image: Image {
-        Image(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        var builder = Image(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { builder = builder.addMiddleware(hook) }
+        return builder
     }
 
     /// The speech-generation (text-to-speech) builder.
@@ -54,13 +81,17 @@ public struct Client: Sendable {
 
     /// The music-generation builder.
     public var music: Music {
-        Music(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        var builder = Music(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { builder = builder.addMiddleware(hook) }
+        return builder
     }
 
     /// The video-generation builder (asynchronous; `submit` returns a live
     /// `VideoJob` handle, ADR-034).
     public var video: Video {
-        Video(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        var builder = Video(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { builder = builder.addMiddleware(hook) }
+        return builder
     }
 
     /// The speech-to-text (transcription) builder (ADR-048 / ADR-051). `submit`
@@ -74,7 +105,9 @@ public struct Client: Sendable {
 
     /// A fresh tool-using agent (the one stateful builder, ADR-066 SWIFT-004).
     public func agent() -> Agent {
-        Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        let agent = Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { agent.addMiddleware(hook) }
+        return agent
     }
 }
 
