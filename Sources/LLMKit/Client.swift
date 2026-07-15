@@ -57,6 +57,8 @@ public struct Text: Sendable {
     var modelOverride: String?
     var systemPrompt: String?
     var options = PromptOptions()
+    var inputImages: [InputImage] = []
+    var inputFiles: [FileRef] = []
 
     init(provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient) {
         self.provider = provider
@@ -121,6 +123,35 @@ public struct Text: Sendable {
         with { $0.options.middleware.append(hook) }
     }
 
+    /// Attach an image as vision input to the prompt (ADR-060). The bytes are
+    /// lowered into a base64 data URI and emitted as the provider's native image
+    /// block. Multiple `.image(...)` calls accumulate in order.
+    public func image(_ mimeType: String, _ data: Data) -> Text {
+        with {
+            $0.inputImages.append(InputImage(
+                url: "data:\(mimeType);base64,\(data.base64EncodedString())",
+                mimeType: mimeType, detail: ""
+            ))
+        }
+    }
+
+    /// Attach an uploaded-file reference to the prompt (ADR-060), emitted as the
+    /// provider's native document/file block. Multiple `.file(...)` calls
+    /// accumulate in order.
+    public func file(_ id: String) -> Text {
+        with { $0.inputFiles.append(FileRef(id: id, uri: "", mimeType: "")) }
+    }
+
+    /// The internal user turn: a plain text turn, or a media turn carrying the
+    /// accumulated image/file parts (ADR-060). Files precede images precede text
+    /// in the emitted content array.
+    private func userMsgs(_ prompt: String) -> [Transforms.Msg] {
+        if inputImages.isEmpty, inputFiles.isEmpty {
+            return [.text(role: "user", text: prompt)]
+        }
+        return [.media(role: "user", text: prompt, images: inputImages, files: inputFiles)]
+    }
+
     /// Send a single-turn prompt and return the response. Fires the `llmRequest`
     /// middleware op (pre-phase veto, post-phase observation with usage) and
     /// applies prompt caching to the built body when `.caching()` was set.
@@ -141,7 +172,7 @@ public struct Text: Sendable {
                 apiKey: apiKey,
                 model: model,
                 system: systemPrompt,
-                msgs: [.text(role: "user", text: userPrompt)],
+                msgs: userMsgs(userPrompt),
                 tools: [],
                 options: options
             )
@@ -179,7 +210,7 @@ public struct Text: Sendable {
         let model = try RequestBuilder.resolveModel(config, modelOverride)
         return try await Streamer.run(
             config: config, apiKey: apiKey, model: model, system: systemPrompt,
-            msgs: [.text(role: "user", text: userPrompt)], options: options,
+            msgs: userMsgs(userPrompt), options: options,
             http: http, baseURLOverride: baseURLOverride, onDelta: onDelta
         )
     }
@@ -203,7 +234,8 @@ public struct Text: Sendable {
         do {
             let job = try await Batch.submit(
                 config: config, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
-                model: model, system: systemPrompt, prompts: prompts, options: options
+                model: model, system: systemPrompt, prompts: prompts,
+                images: inputImages, files: inputFiles, options: options
             )
             postEvent.duration = Date().timeIntervalSince(start)
             Middleware.firePost(options.middleware, postEvent)
