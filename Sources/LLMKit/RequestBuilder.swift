@@ -120,6 +120,19 @@ enum RequestBuilder {
 
         //
         //
+        //
+        //
+        //
+        if Transforms.hasFileParts(msgs), let upload = fileUploadConfig(config.name), !upload.betaHeader.isEmpty {
+            if let index = headers.firstIndex(where: { $0.0.caseInsensitiveCompare("anthropic-beta") == .orderedSame }) {
+                headers[index].1 = appendBeta(headers[index].1, upload.betaHeader)
+            } else {
+                headers.append(("anthropic-beta", upload.betaHeader))
+            }
+        }
+
+        //
+        //
         if wireShape == "ChatResponsesOpenAI" {
             if let value = JSONObject.value(body, "max_tokens") {
                 JSONObject.remove(&body, "max_tokens")

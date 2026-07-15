@@ -4,6 +4,25 @@ import Foundation
 ///
 ///
 ///
+struct InputImage: Sendable, Equatable {
+    var url: String
+    var mimeType: String
+    var detail: String
+}
+
+///
+///
+///
+struct FileRef: Sendable, Equatable {
+    var id: String
+    var uri: String
+    var mimeType: String
+}
+
+///
+///
+///
+///
 ///
 ///
 enum Transforms {
@@ -11,10 +30,18 @@ enum Transforms {
     ///
     ///
     ///
+    ///
     enum Msg: Sendable {
         case text(role: String, text: String)
+        case media(role: String, text: String, images: [InputImage], files: [FileRef])
         case calls([ToolCall])
         case result(ToolResult)
+    }
+
+    ///
+    ///
+    static func hasFileParts(_ msgs: [Msg]) -> Bool {
+        msgs.contains { if case let .media(_, _, _, files) = $0 { return !files.isEmpty }; return false }
     }
 
     //
@@ -71,9 +98,127 @@ enum Transforms {
                     ("role", .string(mapRole(role, config))),
                     ("content", content),
                 ]))
+            case let .media(role, text, images, files):
+                let content: JSONValue = bedrock
+                    ? .array(bedrockContentParts(images: images, text: text))
+                    : .array(flatContentParts(images: images, files: files, text: text, wireShape: wireShape))
+                messages.append(.object([
+                    ("role", .string(mapRole(role, config))),
+                    ("content", content),
+                ]))
             }
         }
         return messages
+    }
+
+    ///
+    ///
+    ///
+    ///
+    ///
+    private static func flatContentParts(
+        images: [InputImage], files: [FileRef], text: String, wireShape: String
+    ) -> [JSONValue] {
+        let isAnthropic = wireShape == "ChatAnthropic"
+        var parts: [JSONValue] = []
+
+        for file in files {
+            if isAnthropic {
+                parts.append(.object([
+                    ("type", .string("document")),
+                    ("source", .object([("type", .string("file")), ("file_id", .string(file.id))])),
+                ]))
+            } else {
+                parts.append(.object([
+                    ("type", .string("file")),
+                    ("file", .object([("file_id", .string(file.id))])),
+                ]))
+            }
+        }
+
+        for image in images {
+            if isAnthropic {
+                if image.url.hasPrefix("data:") {
+                    let (mime, data) = parseDataURI(image.url)
+                    parts.append(.object([
+                        ("type", .string("image")),
+                        ("source", .object([
+                            ("type", .string("base64")),
+                            ("media_type", .string(mime)),
+                            ("data", .string(data)),
+                        ])),
+                    ]))
+                } else {
+                    parts.append(.object([
+                        ("type", .string("image")),
+                        ("source", .object([("type", .string("url")), ("url", .string(image.url))])),
+                    ]))
+                }
+            } else {
+                let detail = image.detail.isEmpty ? "auto" : image.detail
+                parts.append(.object([
+                    ("type", .string("image_url")),
+                    ("image_url", .object([("url", .string(image.url)), ("detail", .string(detail))])),
+                ]))
+            }
+        }
+
+        parts.append(.object([("type", .string("text")), ("text", .string(text))]))
+        return parts
+    }
+
+    ///
+    ///
+    ///
+    private static func googleParts(images: [InputImage], files: [FileRef], text: String) -> [JSONValue] {
+        var parts: [JSONValue] = []
+        for file in files {
+            parts.append(.object([("file_data", .object([
+                ("file_uri", .string(file.uri)),
+                ("mime_type", .string(file.mimeType)),
+            ]))]))
+        }
+        for image in images where image.url.hasPrefix("data:") {
+            let (mime, data) = parseDataURI(image.url)
+            parts.append(.object([("inline_data", .object([
+                ("mime_type", .string(mime)),
+                ("data", .string(data)),
+            ]))]))
+        }
+        parts.append(.object([("text", .string(text))]))
+        return parts
+    }
+
+    ///
+    ///
+    ///
+    private static func bedrockContentParts(images: [InputImage], text: String) -> [JSONValue] {
+        var parts: [JSONValue] = []
+        for image in images {
+            var (mime, data) = parseDataURI(image.url)
+            if mime.isEmpty { mime = image.mimeType }
+            parts.append(.object([("image", .object([
+                ("format", .string(bedrockImageFormat(mime))),
+                ("source", .object([("bytes", .string(data))])),
+            ]))]))
+        }
+        parts.append(.object([("text", .string(text))]))
+        return parts
+    }
+
+    ///
+    ///
+    private static func parseDataURI(_ url: String) -> (mime: String, data: String) {
+        guard url.hasPrefix("data:"), let comma = url.firstIndex(of: ",") else { return ("", url) }
+        let header = url[url.index(url.startIndex, offsetBy: 5)..<comma] // after "data:"
+        let mime = header.split(separator: ";").first.map(String.init) ?? ""
+        return (mime, String(url[url.index(after: comma)...]))
+    }
+
+    ///
+    private static func bedrockImageFormat(_ mime: String) -> String {
+        if let slash = mime.lastIndex(of: "/") { return String(mime[mime.index(after: slash)...]) }
+        return mime
     }
 
     private static func googleContents(
@@ -100,6 +245,11 @@ enum Transforms {
                 contents.append(.object([
                     ("role", .string(mapRole(role, config))),
                     ("parts", .array([.object([("text", .string(text))])])),
+                ]))
+            case let .media(role, text, images, files):
+                contents.append(.object([
+                    ("role", .string(mapRole(role, config))),
+                    ("parts", .array(googleParts(images: images, files: files, text: text))),
                 ]))
             }
         }

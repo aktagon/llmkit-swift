@@ -57,6 +57,8 @@ public struct Text: Sendable {
     var modelOverride: String?
     var systemPrompt: String?
     var options = PromptOptions()
+    var inputImages: [InputImage] = []
+    var inputFiles: [FileRef] = []
 
     init(provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient) {
         self.provider = provider
@@ -124,6 +126,35 @@ public struct Text: Sendable {
     ///
     ///
     ///
+    public func image(_ mimeType: String, _ data: Data) -> Text {
+        with {
+            $0.inputImages.append(InputImage(
+                url: "data:\(mimeType);base64,\(data.base64EncodedString())",
+                mimeType: mimeType, detail: ""
+            ))
+        }
+    }
+
+    ///
+    ///
+    ///
+    public func file(_ id: String) -> Text {
+        with { $0.inputFiles.append(FileRef(id: id, uri: "", mimeType: "")) }
+    }
+
+    ///
+    ///
+    ///
+    private func userMsgs(_ prompt: String) -> [Transforms.Msg] {
+        if inputImages.isEmpty, inputFiles.isEmpty {
+            return [.text(role: "user", text: prompt)]
+        }
+        return [.media(role: "user", text: prompt, images: inputImages, files: inputFiles)]
+    }
+
+    ///
+    ///
+    ///
     public func prompt(_ userPrompt: String) async throws -> Response {
         let config = providerConfig(provider)
         let (wireShape, endpoint) = try RequestBuilder.resolveChatProtocol(config: config, token: options.proto)
@@ -141,7 +172,7 @@ public struct Text: Sendable {
                 apiKey: apiKey,
                 model: model,
                 system: systemPrompt,
-                msgs: [.text(role: "user", text: userPrompt)],
+                msgs: userMsgs(userPrompt),
                 tools: [],
                 options: options
             )
@@ -179,7 +210,7 @@ public struct Text: Sendable {
         let model = try RequestBuilder.resolveModel(config, modelOverride)
         return try await Streamer.run(
             config: config, apiKey: apiKey, model: model, system: systemPrompt,
-            msgs: [.text(role: "user", text: userPrompt)], options: options,
+            msgs: userMsgs(userPrompt), options: options,
             http: http, baseURLOverride: baseURLOverride, onDelta: onDelta
         )
     }
@@ -203,7 +234,8 @@ public struct Text: Sendable {
         do {
             let job = try await Batch.submit(
                 config: config, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
-                model: model, system: systemPrompt, prompts: prompts, options: options
+                model: model, system: systemPrompt, prompts: prompts,
+                images: inputImages, files: inputFiles, options: options
             )
             postEvent.duration = Date().timeIntervalSince(start)
             Middleware.firePost(options.middleware, postEvent)
