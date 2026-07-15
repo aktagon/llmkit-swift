@@ -35,10 +35,17 @@ enum ResponseParser {
         )
     }
 
-    /// Map a non-2xx response to a typed API error. Phase 0 surfaces the raw
-    /// body as the message; per-provider error-path parsing lands in Phase 2.
+    /// Map a non-2xx response to a typed API error, reading the message from the
+    /// provider's declared `errorMessagePath` when the body parses as JSON,
+    /// falling back to the raw body.
     static func parseError(config: ProviderSpec, statusCode: Int, body: Data) -> LLMKitError {
-        let message = String(data: body, encoding: .utf8) ?? ""
+        let raw = String(data: body, encoding: .utf8) ?? ""
+        var message = raw
+        if !config.errorMessagePath.isEmpty,
+           let parsed = try? JSONValue.parse(raw) {
+            let extracted = parsed.stringValue(at: config.errorMessagePath)
+            if !extracted.isEmpty { message = extracted }
+        }
         return .api(provider: config.slug, statusCode: statusCode, message: message)
     }
 }

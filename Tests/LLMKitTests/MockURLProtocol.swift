@@ -5,11 +5,13 @@ import Foundation
 /// builds without a live network call. Installed via an injected `URLSession`.
 final class MockURLProtocol: URLProtocol {
     static var capturedBody: Data?
+    static var capturedHeaders: [String: String] = [:]
     static var responseStatusCode = 200
     static var responseBody = Data()
 
     static func reset() {
         capturedBody = nil
+        capturedHeaders = [:]
         responseStatusCode = 200
         responseBody = Data()
     }
@@ -26,6 +28,13 @@ final class MockURLProtocol: URLProtocol {
 
     override func startLoading() {
         MockURLProtocol.capturedBody = MockURLProtocol.body(from: request)
+        // Lowercase the header keys to match the cross-SDK comparator's
+        // case-insensitive subset match (HANDOFF-028).
+        var headers: [String: String] = [:]
+        for (key, value) in request.allHTTPHeaderFields ?? [:] {
+            headers[key.lowercased()] = value
+        }
+        MockURLProtocol.capturedHeaders = headers
         if let url = request.url,
            let response = HTTPURLResponse(
                url: url,
