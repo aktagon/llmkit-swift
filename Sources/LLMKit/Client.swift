@@ -9,6 +9,9 @@ public struct Client: Sendable {
     let apiKey: String
     let baseURLOverride: String?
     let http: HTTPClient
+    ///
+    ///
+    let defaultMiddleware: [MiddlewareFn]
 
     ///
     ///
@@ -17,13 +20,18 @@ public struct Client: Sendable {
         self.apiKey = apiKey
         self.baseURLOverride = nil
         self.http = HTTPClient(session: session)
+        self.defaultMiddleware = []
     }
 
-    private init(provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient) {
+    private init(
+        provider: ProviderName, apiKey: String, baseURLOverride: String?,
+        http: HTTPClient, defaultMiddleware: [MiddlewareFn]
+    ) {
         self.provider = provider
         self.apiKey = apiKey
         self.baseURLOverride = baseURLOverride
         self.http = http
+        self.defaultMiddleware = defaultMiddleware
     }
 
     ///
@@ -34,17 +42,36 @@ public struct Client: Sendable {
     ///
     ///
     public func baseURL(_ url: String) -> Client {
-        Client(provider: provider, apiKey: apiKey, baseURLOverride: url, http: http)
+        Client(
+            provider: provider, apiKey: apiKey, baseURLOverride: url,
+            http: http, defaultMiddleware: defaultMiddleware
+        )
+    }
+
+    ///
+    ///
+    ///
+    ///
+    ///
+    public func addTelemetry(_ telemetry: Telemetry) -> Client {
+        Client(
+            provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride,
+            http: http, defaultMiddleware: defaultMiddleware + [TelemetryRuntime.makeMiddleware(telemetry)]
+        )
     }
 
     ///
     public var text: Text {
-        Text(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        var builder = Text(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { builder = builder.addMiddleware(hook) }
+        return builder
     }
 
     ///
     public var image: Image {
-        Image(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        var builder = Image(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { builder = builder.addMiddleware(hook) }
+        return builder
     }
 
     ///
@@ -54,13 +81,17 @@ public struct Client: Sendable {
 
     ///
     public var music: Music {
-        Music(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        var builder = Music(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { builder = builder.addMiddleware(hook) }
+        return builder
     }
 
     ///
     ///
     public var video: Video {
-        Video(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        var builder = Video(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { builder = builder.addMiddleware(hook) }
+        return builder
     }
 
     ///
@@ -74,7 +105,9 @@ public struct Client: Sendable {
 
     ///
     public func agent() -> Agent {
-        Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        let agent = Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { agent.addMiddleware(hook) }
+        return agent
     }
 }
 
