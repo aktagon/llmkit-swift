@@ -65,7 +65,7 @@ enum Batch {
             throw LLMKitError.validation(field: "provider", message: "async batching not supported: \(config.slug)")
         }
         let base = baseURLOverride ?? config.baseURL
-        let headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
+        var headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
 
         let body: JSONValue
         switch batch.inputMode {
@@ -78,13 +78,33 @@ enum Batch {
                 ("completion_window", .string(batch.completionWindow)),
             ])
         case .inlineRequests:
-            let items: [JSONValue] = try prompts.enumerated().map { index, prompt in
-                let (itemBody, _) = try RequestBuilder.buildBody(
+            var items: [JSONValue] = []
+            // The per-item bodies may require a contract-bearing anthropic-beta
+            // (structured output / files) that buildAuthHeaders does not set —
+            // compose it across items and ride it onto the batch CREATE request,
+            // else a schema/file-referencing item silently drops the beta and the
+            // provider 400s (mirror of Rust batch.rs build_batch_body).
+            var beta = ""
+            for (index, prompt) in prompts.enumerated() {
+                let (itemBody, itemHeaders) = try RequestBuilder.buildBody(
                     config: config, wireShape: config.chatWireShape, apiKey: apiKey,
                     model: model, system: nil, msgs: [.text(role: "user", text: prompt)], tools: [], options: options
                 )
-                if batch.itemBodyField.isEmpty { return itemBody }
-                return .object([("custom_id", .string("req-\(index)")), (batch.itemBodyField, itemBody)])
+                if let value = itemHeaders.first(where: { $0.0.caseInsensitiveCompare("anthropic-beta") == .orderedSame })?.1 {
+                    beta = RequestBuilder.appendBeta(beta, value)
+                }
+                if batch.itemBodyField.isEmpty {
+                    items.append(itemBody)
+                } else {
+                    items.append(.object([("custom_id", .string("req-\(index)")), (batch.itemBodyField, itemBody)]))
+                }
+            }
+            if !beta.isEmpty {
+                if let existing = headers.firstIndex(where: { $0.0.caseInsensitiveCompare("anthropic-beta") == .orderedSame }) {
+                    headers[existing].1 = RequestBuilder.appendBeta(headers[existing].1, beta)
+                } else {
+                    headers.append(("anthropic-beta", beta))
+                }
             }
             body = batch.requestWrapper.isEmpty
                 ? .object([("requests", .array(items))])

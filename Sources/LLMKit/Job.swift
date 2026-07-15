@@ -127,7 +127,12 @@ enum Job {
             let status = try await pollOnce(adapter)
             switch status.state {
             case .succeeded:
-                return status.result!
+                // `pollOnce` sets `result` iff state is `.succeeded` (by
+                // construction); guard rather than force-unwrap the invariant.
+                guard let result = status.result else {
+                    throw LLMKitError.unsupported("\(lc.noun): succeeded status carried no result")
+                }
+                return result
             case .failed:
                 throw jobFailedError(lc.noun, status.cause ?? JobFailure())
             case .running:

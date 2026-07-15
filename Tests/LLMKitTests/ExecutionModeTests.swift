@@ -70,4 +70,29 @@ final class ExecutionModeTests: XCTestCase {
         XCTAssertEqual(responses.first?.usage.input, 3)
         XCTAssertEqual(responses.first?.usage.output, 1)
     }
+
+    /// Review finding #1: an inline Anthropic batch whose per-item bodies carry a
+    /// structured-output schema emits `output_format` in each item — the batch
+    /// CREATE request MUST carry the composed `anthropic-beta`, else the provider
+    /// 400s. The beta lives on the item's build headers, not on the batch auth
+    /// headers, so it has to be lifted onto the CREATE request.
+    func testInlineBatchCreateCarriesAnthropicBeta() async throws {
+        MockURLProtocol.reset()
+        MockURLProtocol.responseBody = Data("{\"id\":\"batch_1\"}".utf8)
+        let schema = "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}"
+
+        let job = try await mockClient(.anthropic).text
+            .model("claude-sonnet-4-6").schema(schema)
+            .batch("Name a coastal city in Finland.")
+
+        XCTAssertEqual(job.handle.id, "batch_1")
+        XCTAssertEqual(MockURLProtocol.capturedHeaders["anthropic-beta"], "structured-outputs-2025-11-13")
+        // The item body actually carries the format field the beta gates.
+        let createBody = try JSONValue.parse(String(decoding: XCTUnwrap(MockURLProtocol.capturedBody), as: UTF8.self))
+        guard case let .array(requests)? = createBody.member("requests"),
+              let params = requests.first?.member("params") else {
+            return XCTFail("batch create body has no requests[0].params")
+        }
+        XCTAssertNotNil(params.member("output_format"))
+    }
 }
