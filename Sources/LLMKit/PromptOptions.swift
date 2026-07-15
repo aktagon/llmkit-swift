@@ -16,6 +16,13 @@ public struct SafetySetting: Sendable, Equatable {
 /// applied to the request body by `RequestBuilder` (mirrors Rust's
 /// `PromptOptions`). Internal — the public surface is the builder chain.
 struct PromptOptions: Sendable {
+    /// Opt into prompt caching (ADR-026). The provider-appropriate mechanism is
+    /// chosen by `cachingConfig(provider).mode`.
+    var caching: Bool = false
+    /// Cache TTL in seconds (resource caching only); nil uses the provider default.
+    var cacheTtl: Int?
+    /// Observation + veto hooks fired around each operation site.
+    var middleware: [MiddlewareFn] = []
     var maxTokens: Int?
     var temperature: Double?
     var topP: Double?
