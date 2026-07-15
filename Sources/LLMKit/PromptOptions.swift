@@ -16,6 +16,13 @@ public struct SafetySetting: Sendable, Equatable {
 ///
 ///
 struct PromptOptions: Sendable {
+    ///
+    ///
+    var caching: Bool = false
+    ///
+    var cacheTtl: Int?
+    ///
+    var middleware: [MiddlewareFn] = []
     var maxTokens: Int?
     var temperature: Double?
     var topP: Double?

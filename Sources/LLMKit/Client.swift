@@ -111,32 +111,64 @@ public struct Text: Sendable {
     public func `protocol`(_ token: String) -> Text { with { $0.options.proto = token } }
 
     ///
+    public func caching() -> Text { with { $0.options.caching = true } }
+
+    ///
+    public func cacheTtl(_ seconds: Int) -> Text { with { $0.options.cacheTtl = seconds } }
+
+    ///
+    public func addMiddleware(_ hook: @escaping MiddlewareFn) -> Text {
+        with { $0.options.middleware.append(hook) }
+    }
+
+    ///
+    ///
+    ///
     public func prompt(_ userPrompt: String) async throws -> Response {
         let config = providerConfig(provider)
         let (wireShape, endpoint) = try RequestBuilder.resolveChatProtocol(config: config, token: options.proto)
         let model = try RequestBuilder.resolveModel(config, modelOverride)
 
-        let (body, headers) = try RequestBuilder.buildBody(
-            config: config,
-            wireShape: wireShape,
-            apiKey: apiKey,
-            model: model,
-            system: systemPrompt,
-            msgs: [.text(role: "user", text: userPrompt)],
-            tools: [],
-            options: options
-        )
-        let url = RequestBuilder.buildURL(
-            config: config, endpoint: endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
-        )
+        let baseEvent = Event(op: .llmRequest, provider: provider.rawValue, model: model)
+        let start = Date()
+        try Middleware.firePre(options.middleware, baseEvent)
 
-        let (statusCode, data) = try await RequestBuilder.send(
-            config: config, url: url, body: body, headers: headers, apiKey: apiKey, http: http
-        )
-        guard (200..<300).contains(statusCode) else {
-            throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
+        var postEvent = baseEvent
+        do {
+            var (body, headers) = try RequestBuilder.buildBody(
+                config: config,
+                wireShape: wireShape,
+                apiKey: apiKey,
+                model: model,
+                system: systemPrompt,
+                msgs: [.text(role: "user", text: userPrompt)],
+                tools: [],
+                options: options
+            )
+            try await CachingRuntime.apply(
+                &body, provider: provider, model: model, apiKey: apiKey,
+                options: options, config: config, http: http, baseURLOverride: baseURLOverride
+            )
+            let url = RequestBuilder.buildURL(
+                config: config, endpoint: endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
+            )
+            let (statusCode, data) = try await RequestBuilder.send(
+                config: config, url: url, body: body, headers: headers, apiKey: apiKey, http: http
+            )
+            guard (200..<300).contains(statusCode) else {
+                throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
+            }
+            let response = try ResponseParser.parse(config: config, body: data)
+            postEvent.duration = Date().timeIntervalSince(start)
+            postEvent.usage = response.usage
+            Middleware.firePost(options.middleware, postEvent)
+            return response
+        } catch {
+            postEvent.duration = Date().timeIntervalSince(start)
+            postEvent.err = "\(error)"
+            Middleware.firePost(options.middleware, postEvent)
+            throw error
         }
-        return try ResponseParser.parse(config: config, body: data)
     }
 
     ///
@@ -154,16 +186,34 @@ public struct Text: Sendable {
 
     ///
     ///
+    ///
+    ///
     public func batch(_ prompts: String...) async throws -> BatchJob {
         let config = providerConfig(provider)
         guard options.proto.isEmpty else {
             throw LLMKitError.validation(field: "protocol", message: "batch supports only the default chat protocol")
         }
         let model = try RequestBuilder.resolveModel(config, modelOverride)
-        return try await Batch.submit(
-            config: config, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
-            model: model, prompts: prompts, options: options
-        )
+
+        let baseEvent = Event(op: .batchSubmit, provider: provider.rawValue, model: model)
+        let start = Date()
+        try Middleware.firePre(options.middleware, baseEvent)
+
+        var postEvent = baseEvent
+        do {
+            let job = try await Batch.submit(
+                config: config, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
+                model: model, system: systemPrompt, prompts: prompts, options: options
+            )
+            postEvent.duration = Date().timeIntervalSince(start)
+            Middleware.firePost(options.middleware, postEvent)
+            return job
+        } catch {
+            postEvent.duration = Date().timeIntervalSince(start)
+            postEvent.err = "\(error)"
+            Middleware.firePost(options.middleware, postEvent)
+            throw error
+        }
     }
 
     ///
