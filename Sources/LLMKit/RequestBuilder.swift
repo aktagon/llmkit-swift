@@ -34,13 +34,17 @@ enum RequestBuilder {
     }
 
     ///
+    ///
+    ///
+    ///
     static func buildBody(
         config: ProviderSpec,
         wireShape: String,
         apiKey: String,
         model: String,
         system: String?,
-        userPrompt: String,
+        msgs: [Transforms.Msg],
+        tools: [Tool],
         options: PromptOptions
     ) throws -> (body: JSONValue, headers: [(String, String)]) {
         var body: [(String, JSONValue)] = []
@@ -77,8 +81,9 @@ enum RequestBuilder {
         }
 
         Transforms.applyMessageShape(
-            body: &body, userPrompt: userPrompt, system: system, wireShape: wireShape, config: config
+            body: &body, msgs: msgs, system: system, wireShape: wireShape, config: config
         )
+        Transforms.applyToolDefs(&body, config, tools)
 
         //
         //
@@ -123,6 +128,47 @@ enum RequestBuilder {
         }
 
         return (.object(body), headers)
+    }
+
+    ///
+    ///
+    static func resolveModel(_ config: ProviderSpec, _ override: String?) throws -> String {
+        if let override { return override }
+        if config.defaultModel.isEmpty {
+            throw LLMKitError.validation(
+                field: "model",
+                message: "no model chosen and \"\(config.slug)\" declares no default"
+            )
+        }
+        return config.defaultModel
+    }
+
+    ///
+    ///
+    ///
+    static func send(
+        config: ProviderSpec,
+        url: String,
+        body: JSONValue,
+        headers: [(String, String)],
+        apiKey: String,
+        http: HTTPClient
+    ) async throws -> (statusCode: Int, data: Data) {
+        guard config.authScheme == "SigV4" else {
+            return try await http.postJSON(url: url, body: body, headers: headers)
+        }
+        let env = ProcessInfo.processInfo.environment
+        guard let region = env[config.regionEnvVar] else {
+            throw LLMKitError.validation(field: "provider", message: "missing env var \(config.regionEnvVar)")
+        }
+        guard let secretKey = env[config.secretKeyEnvVar] else {
+            throw LLMKitError.validation(field: "provider", message: "missing env var \(config.secretKeyEnvVar)")
+        }
+        let sessionToken = config.sessionTokenEnvVar.isEmpty ? "" : (env[config.sessionTokenEnvVar] ?? "")
+        return try await http.postJSONSigV4(
+            url: url, body: body, accessKey: apiKey, secretKey: secretKey,
+            sessionToken: sessionToken, region: region, service: config.serviceName, callerHeaders: []
+        )
     }
 
     ///

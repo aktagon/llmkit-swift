@@ -11,6 +11,12 @@ public enum LLMKitError: Error, Equatable, Sendable {
     case transport(String)
     ///
     case decoding(String)
+    ///
+    ///
+    case unsupported(String)
+    ///
+    ///
+    case pollTimeout(provider: String, id: String)
 }
 
 extension LLMKitError: LocalizedError {
@@ -24,6 +30,10 @@ extension LLMKitError: LocalizedError {
             return "transport: \(message)"
         case let .decoding(message):
             return "decoding: \(message)"
+        case let .unsupported(message):
+            return message
+        case let .pollTimeout(provider, id):
+            return "\(provider): job \(id) timed out"
         }
     }
 }
