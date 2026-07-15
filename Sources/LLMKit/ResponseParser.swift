@@ -37,8 +37,15 @@ enum ResponseParser {
 
     ///
     ///
+    ///
     static func parseError(config: ProviderSpec, statusCode: Int, body: Data) -> LLMKitError {
-        let message = String(data: body, encoding: .utf8) ?? ""
+        let raw = String(data: body, encoding: .utf8) ?? ""
+        var message = raw
+        if !config.errorMessagePath.isEmpty,
+           let parsed = try? JSONValue.parse(raw) {
+            let extracted = parsed.stringValue(at: config.errorMessagePath)
+            if !extracted.isEmpty { message = extracted }
+        }
         return .api(provider: config.slug, statusCode: statusCode, message: message)
     }
 }
