@@ -42,6 +42,11 @@ public struct Client: Sendable {
         Text(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
     }
 
+    /// The image-generation builder.
+    public var image: Image {
+        Image(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+    }
+
     /// A fresh tool-using agent (the one stateful builder, ADR-066 SWIFT-004).
     public func agent() -> Agent {
         Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
