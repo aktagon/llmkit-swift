@@ -57,6 +57,12 @@ public struct Client: Sendable {
         Music(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
     }
 
+    /// The video-generation builder (asynchronous; `submit` returns a live
+    /// `VideoJob` handle, ADR-034).
+    public var video: Video {
+        Video(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+    }
+
     /// A fresh tool-using agent (the one stateful builder, ADR-066 SWIFT-004).
     public func agent() -> Agent {
         Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
