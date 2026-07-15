@@ -1,20 +1,47 @@
 import Foundation
 
+/// A vision-input image attached to a text-generation request (ADR-060). The
+/// builder's `.image(mime, data)` lowers into this carrier as a base64 data URI;
+/// the transform emits it as the provider's native image block. Mirror of Rust's
+/// `InputImage`.
+struct InputImage: Sendable, Equatable {
+    var url: String
+    var mimeType: String
+    var detail: String
+}
+
+/// A reference to an uploaded file attached to a text-generation request
+/// (ADR-060). `id` addresses an OpenAI/Anthropic uploaded file; `uri`/`mimeType`
+/// address a Google `file_data`. Mirror of the fields Rust's `File` carries.
+struct FileRef: Sendable, Equatable {
+    var id: String
+    var uri: String
+    var mimeType: String
+}
+
 /// Request-body message + tool transforms, selected by the effective
 /// `chatWireShape` (ADR-047 / ADR-055 discriminator) and the generated
 /// `ToolCallDef`, NOT by provider name — a file-by-file port of Rust's
-/// `transforms.rs`. Covers the multi-turn message array (text, tool-call, and
-/// tool-result turns) for the four chat wire shapes plus tool-definition
-/// serialization. Media Parts remain deferred to a later phase.
+/// `transforms.rs`. Covers the multi-turn message array (text, media, tool-call,
+/// and tool-result turns) for the four chat wire shapes plus tool-definition
+/// serialization.
 enum Transforms {
     /// The internal message representation: a sum that is *exactly one of* text,
-    /// tool-calls, or tool-result (ADR-026 PIPE-007). The public `Message` is a
-    /// flat product that can encode an illegal multi-carrier combination; this
-    /// enum cannot, so the transforms dispatch with an exhaustive switch.
+    /// media (text + image/file parts), tool-calls, or tool-result (ADR-026
+    /// PIPE-007). The public surface is a flat product that could encode an
+    /// illegal multi-carrier combination; this enum cannot, so the transforms
+    /// dispatch with an exhaustive switch.
     enum Msg: Sendable {
         case text(role: String, text: String)
+        case media(role: String, text: String, images: [InputImage], files: [FileRef])
         case calls([ToolCall])
         case result(ToolResult)
+    }
+
+    /// True when any turn carries a file reference — drives the Anthropic
+    /// files-api beta header (BUG-017).
+    static func hasFileParts(_ msgs: [Msg]) -> Bool {
+        msgs.contains { if case let .media(_, _, _, files) = $0 { return !files.isEmpty }; return false }
     }
 
     // MARK: - Message array
@@ -71,9 +98,127 @@ enum Transforms {
                     ("role", .string(mapRole(role, config))),
                     ("content", content),
                 ]))
+            case let .media(role, text, images, files):
+                let content: JSONValue = bedrock
+                    ? .array(bedrockContentParts(images: images, text: text))
+                    : .array(flatContentParts(images: images, files: files, text: text, wireShape: wireShape))
+                messages.append(.object([
+                    ("role", .string(mapRole(role, config))),
+                    ("content", content),
+                ]))
             }
         }
         return messages
+    }
+
+    /// The flat (OpenAI / Anthropic / Responses) content-parts array for a media
+    /// turn: files first, then images, then the text — the fixed order the wire
+    /// goldens pin. Anthropic uses `document`/`image` blocks with a `source`;
+    /// OpenAI uses `file`/`image_url` blocks. Mirror of Rust's
+    /// `build_flat_content_parts`.
+    private static func flatContentParts(
+        images: [InputImage], files: [FileRef], text: String, wireShape: String
+    ) -> [JSONValue] {
+        let isAnthropic = wireShape == "ChatAnthropic"
+        var parts: [JSONValue] = []
+
+        for file in files {
+            if isAnthropic {
+                parts.append(.object([
+                    ("type", .string("document")),
+                    ("source", .object([("type", .string("file")), ("file_id", .string(file.id))])),
+                ]))
+            } else {
+                parts.append(.object([
+                    ("type", .string("file")),
+                    ("file", .object([("file_id", .string(file.id))])),
+                ]))
+            }
+        }
+
+        for image in images {
+            if isAnthropic {
+                if image.url.hasPrefix("data:") {
+                    let (mime, data) = parseDataURI(image.url)
+                    parts.append(.object([
+                        ("type", .string("image")),
+                        ("source", .object([
+                            ("type", .string("base64")),
+                            ("media_type", .string(mime)),
+                            ("data", .string(data)),
+                        ])),
+                    ]))
+                } else {
+                    parts.append(.object([
+                        ("type", .string("image")),
+                        ("source", .object([("type", .string("url")), ("url", .string(image.url))])),
+                    ]))
+                }
+            } else {
+                let detail = image.detail.isEmpty ? "auto" : image.detail
+                parts.append(.object([
+                    ("type", .string("image_url")),
+                    ("image_url", .object([("url", .string(image.url)), ("detail", .string(detail))])),
+                ]))
+            }
+        }
+
+        parts.append(.object([("type", .string("text")), ("text", .string(text))]))
+        return parts
+    }
+
+    /// The Google `parts` array for a media turn: `file_data` for files,
+    /// `inline_data` for data-URI images, then the text. Mirror of Rust's
+    /// `build_google_parts`.
+    private static func googleParts(images: [InputImage], files: [FileRef], text: String) -> [JSONValue] {
+        var parts: [JSONValue] = []
+        for file in files {
+            parts.append(.object([("file_data", .object([
+                ("file_uri", .string(file.uri)),
+                ("mime_type", .string(file.mimeType)),
+            ]))]))
+        }
+        for image in images where image.url.hasPrefix("data:") {
+            let (mime, data) = parseDataURI(image.url)
+            parts.append(.object([("inline_data", .object([
+                ("mime_type", .string(mime)),
+                ("data", .string(data)),
+            ]))]))
+        }
+        parts.append(.object([("text", .string(text))]))
+        return parts
+    }
+
+    /// The Bedrock Converse content array for a media turn: `image` blocks (files
+    /// are unsupported here), then the text. Mirror of Rust's
+    /// `build_bedrock_content_parts`.
+    private static func bedrockContentParts(images: [InputImage], text: String) -> [JSONValue] {
+        var parts: [JSONValue] = []
+        for image in images {
+            var (mime, data) = parseDataURI(image.url)
+            if mime.isEmpty { mime = image.mimeType }
+            parts.append(.object([("image", .object([
+                ("format", .string(bedrockImageFormat(mime))),
+                ("source", .object([("bytes", .string(data))])),
+            ]))]))
+        }
+        parts.append(.object([("text", .string(text))]))
+        return parts
+    }
+
+    /// Split a `data:<mime>;base64,<data>` URI into its mime type and payload.
+    /// A non-data URI returns ("", url).
+    private static func parseDataURI(_ url: String) -> (mime: String, data: String) {
+        guard url.hasPrefix("data:"), let comma = url.firstIndex(of: ",") else { return ("", url) }
+        let header = url[url.index(url.startIndex, offsetBy: 5)..<comma] // after "data:"
+        let mime = header.split(separator: ";").first.map(String.init) ?? ""
+        return (mime, String(url[url.index(after: comma)...]))
+    }
+
+    /// Derive the Converse `format` token from a MIME type (image/png -> "png").
+    private static func bedrockImageFormat(_ mime: String) -> String {
+        if let slash = mime.lastIndex(of: "/") { return String(mime[mime.index(after: slash)...]) }
+        return mime
     }
 
     private static func googleContents(
@@ -100,6 +245,11 @@ enum Transforms {
                 contents.append(.object([
                     ("role", .string(mapRole(role, config))),
                     ("parts", .array([.object([("text", .string(text))])])),
+                ]))
+            case let .media(role, text, images, files):
+                contents.append(.object([
+                    ("role", .string(mapRole(role, config))),
+                    ("parts", .array(googleParts(images: images, files: files, text: text))),
                 ]))
             }
         }
