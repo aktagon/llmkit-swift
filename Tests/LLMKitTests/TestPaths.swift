@@ -69,6 +69,18 @@ enum TestPaths {
         try Data(payload.utf8).write(to: file)
     }
 
+    /// Write a catalogue request-URL artifact to
+    /// `target/wire/catalogue/<case>/swift.json` (the `{method, url, headers}`
+    /// projection), mirroring the Rust driver's `rust.json` output.
+    static func writeCatalogueArtifact(case caseName: String, projection: JSONValue) throws {
+        let directory = repoRoot()
+            .appendingPathComponent("target/wire/catalogue")
+            .appendingPathComponent(caseName)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("swift.json")
+        try Data(projection.serialized().utf8).write(to: file)
+    }
+
     /// Write a lifecycle-wire artifact to
     /// `target/wire/lifecycle/<fixture>/swift.json` (the normalized JobStatus
     /// projection), mirroring the Rust driver's `rust.json` output.
