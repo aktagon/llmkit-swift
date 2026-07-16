@@ -144,6 +144,24 @@ public struct Client: Sendable {
         for hook in defaultMiddleware { agent.addMiddleware(hook) }
         return agent
     }
+
+    /// Reports whether an explicit request for `capability` will not hard-fail
+    /// pre-flight on this client's provider (ADR-030). Gated capabilities
+    /// (caching, batching, file upload, image generation) dispatch the same
+    /// generated `*Config` lookups their strict validation paths use — never a
+    /// parallel table — so the query and the error cannot drift (CAP-002).
+    /// Capabilities with no provider-level pre-flight gate return `true`. Says
+    /// nothing about per-model or per-option rejections — use the catalogue's
+    /// `ModelInfo.capabilities` for model-level facts. Synchronous, no IO.
+    public func supports(_ capability: Capability) -> Bool {
+        switch capability {
+        case .caching: return cachingConfig(provider) != nil
+        case .batching: return batchConfig(provider) != nil
+        case .fileUpload: return fileUploadConfig(provider) != nil
+        case .imageGeneration: return imageGenConfig(provider) != nil
+        default: return true
+        }
+    }
 }
 
 /// Immutable, clone-on-chain builder for text generation.
