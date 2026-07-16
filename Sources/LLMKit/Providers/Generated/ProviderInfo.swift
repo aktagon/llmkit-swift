@@ -5,18 +5,18 @@
 ///
 ///
 ///
-struct ProviderInfo: Sendable, Equatable {
-    let id: ProviderName
-    let slug: String
-    let envVar: String
-    let defaultModel: String
-    let baseURL: String
+public struct ProviderInfo: Sendable, Equatable {
+    public let id: ProviderName
+    public let slug: String
+    public let envVar: String
+    public let defaultModel: String
+    public let baseURL: String
     ///
-    let browserCallable: Bool
+    public let browserCallable: Bool
 }
 
 ///
-func providerInfo(_ provider: ProviderName) -> ProviderInfo {
+public func providerInfo(_ provider: ProviderName) -> ProviderInfo {
     switch provider {
     case .ai21:
         return ProviderInfo(
@@ -347,6 +347,6 @@ func providerInfo(_ provider: ProviderName) -> ProviderInfo {
 
 ///
 ///
-func allProviderInfo() -> [ProviderInfo] {
+public func allProviderInfo() -> [ProviderInfo] {
     ProviderName.allCases.map(providerInfo)
 }

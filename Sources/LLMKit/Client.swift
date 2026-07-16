@@ -104,6 +104,20 @@ public struct Client: Sendable {
     }
 
     ///
+    ///
+    ///
+    public var models: Models {
+        Models(client: self)
+    }
+
+    ///
+    ///
+    ///
+    public var providers: Providers {
+        Providers(client: self)
+    }
+
+    ///
     public func agent() -> Agent {
         let agent = Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
         for hook in defaultMiddleware { agent.addMiddleware(hook) }
