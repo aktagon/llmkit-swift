@@ -115,19 +115,19 @@ enum RequestBuilder {
         }
 
         if let schema = options.schema {
-            addStructuredOutput(&body, &headers, schema: schema, provider: config.name)
+            addStructuredOutput(&body, schema: schema, provider: config.name)
         }
 
-        // BUG-017: a text request referencing an uploaded file emits an Anthropic
-        // `{"type":"document","source":{"type":"file",...}}` block, which the
-        // Messages API rejects unless the files-api beta rides along. Compose it
-        // with any existing anthropic-beta (e.g. the structured-output beta) —
-        // comma-separated, deduped — never overwriting.
-        if Transforms.hasFileParts(msgs), let upload = fileUploadConfig(config.name), !upload.betaHeader.isEmpty {
+        // #23: the full contract-bearing `anthropic-beta` set for this request —
+        // structured-output beta + files-api beta (BUG-017) — composed and
+        // deduped in one place, then applied once. Composing (never overwriting)
+        // preserves any existing anthropic-beta.
+        let beta = betaHeaders(config: config, options: options, msgs: msgs)
+        if !beta.isEmpty {
             if let index = headers.firstIndex(where: { $0.0.caseInsensitiveCompare("anthropic-beta") == .orderedSame }) {
-                headers[index].1 = appendBeta(headers[index].1, upload.betaHeader)
+                headers[index].1 = appendBeta(headers[index].1, beta)
             } else {
-                headers.append(("anthropic-beta", upload.betaHeader))
+                headers.append(("anthropic-beta", beta))
             }
         }
 
@@ -182,6 +182,24 @@ enum RequestBuilder {
             url: url, body: body, accessKey: apiKey, secretKey: secretKey,
             sessionToken: sessionToken, region: region, service: config.serviceName
         )
+    }
+
+    /// Resolve the complete `anthropic-beta` value a chat request requires,
+    /// composed and deduplicated (#23). Two contract-bearing betas apply on the
+    /// text path: the structured-output beta (when a schema is set) and the
+    /// files-api beta (when the request carries file parts, BUG-017). Structured
+    /// output is composed first to preserve the historical token order. A batch
+    /// envelope lifts its items' betas separately (Batching.swift) — a distinct
+    /// concern, deliberately not folded here.
+    static func betaHeaders(config: ProviderSpec, options: PromptOptions, msgs: [Transforms.Msg]) -> String {
+        var beta = ""
+        if options.schema != nil, let def = structuredOutput(config.name), !def.betaHeader.isEmpty {
+            beta = appendBeta(beta, def.betaHeader)
+        }
+        if Transforms.hasFileParts(msgs), let upload = fileUploadConfig(config.name), !upload.betaHeader.isEmpty {
+            beta = appendBeta(beta, upload.betaHeader)
+        }
+        return beta
     }
 
     /// Compose two comma-separated `anthropic-beta` header values, preserving
@@ -320,7 +338,6 @@ enum RequestBuilder {
 
     private static func addStructuredOutput(
         _ body: inout [(String, JSONValue)],
-        _ headers: inout [(String, String)],
         schema: String,
         provider: ProviderName
     ) {
@@ -329,7 +346,8 @@ enum RequestBuilder {
 
         if def.enforceStrict { setAdditionalPropertiesFalse(&parsed) }
         if def.removeAdditionalProps { removeAdditionalProperties(&parsed) }
-        if !def.betaHeader.isEmpty { headers.append(("anthropic-beta", def.betaHeader)) }
+        // Beta-header selection lives in betaHeaders(config:options:msgs:) (#23);
+        // this seam only shapes the body.
 
         if def.schemaPlacement == "SiblingOfFormat" {
             JSONObject.insertNested(&body, def.formatField, .string(def.formatType))
