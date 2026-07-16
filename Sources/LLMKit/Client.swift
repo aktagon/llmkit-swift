@@ -103,6 +103,20 @@ public struct Client: Sendable {
         Transcription(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
     }
 
+    /// The model-catalogue builder (ADR-019). `models.list()` / `models.get(id)`
+    /// walk the compiled-in catalogue synchronously; `models.provider(p).list()`
+    /// and `models.live()` fetch live provider catalogues.
+    public var models: Models {
+        Models(client: self)
+    }
+
+    /// The providers-namespace builder (ADR-019). `providers.list()` returns the
+    /// credentialed provider as `ProviderInfo` iff it declares a live models
+    /// endpoint, else an empty list.
+    public var providers: Providers {
+        Providers(client: self)
+    }
+
     /// A fresh tool-using agent (the one stateful builder, ADR-066 SWIFT-004).
     public func agent() -> Agent {
         let agent = Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
