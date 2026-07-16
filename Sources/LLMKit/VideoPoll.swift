@@ -103,7 +103,7 @@ struct VideoAdapter: JobAdapter {
             let sessionToken = spec.sessionTokenEnvVar.isEmpty ? "" : (env[spec.sessionTokenEnvVar] ?? "")
             (status, data) = try await http.getTextSigV4(
                 url: pollURL, accessKey: apiKey, secretKey: secretKey, sessionToken: sessionToken,
-                region: region, service: spec.serviceName, callerHeaders: []
+                region: region, service: spec.serviceName
             )
         case .vertexPost:
             (status, data) = try await http.postJSON(
