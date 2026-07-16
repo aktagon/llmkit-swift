@@ -139,6 +139,15 @@ public struct Client: Sendable {
     }
 
     ///
+    ///
+    ///
+    public func upload() -> Upload {
+        var builder = Upload(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { builder = builder.addMiddleware(hook) }
+        return builder
+    }
+
+    ///
     public func agent() -> Agent {
         let agent = Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
         for hook in defaultMiddleware { agent.addMiddleware(hook) }
