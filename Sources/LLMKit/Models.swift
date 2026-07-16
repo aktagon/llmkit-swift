@@ -258,8 +258,10 @@ private func paginate(
     var cursor = ""
     var all: [ParsedModelRecord] = []
     while true {
-        let endpoint = appendCursor(cfg.endpoint, cfg.cursorParam, cursor)
-        let body = try await fetchCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: endpoint)
+        let body = try await fetchCatalogueURL(
+            scoped: scoped, pcfg: pcfg, endpoint: cfg.endpoint,
+            cursor: cursor, cursorParam: cfg.cursorParam
+        )
         let page = try dispatchParser(cfg.parserKind, body)
         all.append(contentsOf: page.records)
         if page.nextCursor.isEmpty { return all }
@@ -268,12 +270,15 @@ private func paginate(
 }
 
 // Splices the pagination cursor into the URL using the cursor query-param
-// name carried by the generated CatalogueConfig (ADR-067 Fix A). An empty
-// cursor or an empty cursorParam (PaginationNone) leaves the URL unchanged.
-private func appendCursor(_ endpoint: String, _ cursorParam: String, _ cursor: String) -> String {
-    if cursor.isEmpty || cursorParam.isEmpty { return endpoint }
-    let sep = endpoint.contains("?") ? "&" : "?"
-    return "\(endpoint)\(sep)\(cursorParam)=\(urlencode(cursor))"
+// name carried by the generated CatalogueConfig (ADR-067 Fix A). Applied to
+// the FULL URL after any QueryParamKey `?key=` is spliced in, so a
+// query-param-auth provider assembles `?key=...&cursor=...` in the same order
+// as Go/Python (CR-003 cross-SDK catalogue-URL byte-parity). An empty cursor
+// or an empty cursorParam (PaginationNone) leaves the URL unchanged.
+func appendCursor(_ rawURL: String, _ cursorParam: String, _ cursor: String) -> String {
+    if cursor.isEmpty || cursorParam.isEmpty { return rawURL }
+    let sep = rawURL.contains("?") ? "&" : "?"
+    return "\(rawURL)\(sep)\(cursorParam)=\(urlencode(cursor))"
 }
 
 /// Minimal percent-encoder for the cursor-token use case; matches RFC 3986
@@ -292,9 +297,16 @@ private func urlencode(_ s: String) -> String {
 }
 
 private func fetchCatalogueURL(
-    scoped: ScopedModels, pcfg: ProviderSpec, endpoint: String
+    scoped: ScopedModels, pcfg: ProviderSpec, endpoint: String,
+    cursor: String = "", cursorParam: String = ""
 ) async throws -> Data {
-    let url = buildCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: endpoint)
+    // Build the base URL (incl. the QueryParamKey `?key=`) first, THEN append
+    // the pagination cursor — so `?key=...&cursor=...` matches Go/Python's
+    // assembly order (CR-003).
+    let url = appendCursor(
+        buildCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: endpoint),
+        cursorParam, cursor
+    )
     let headers = buildCatalogueHeaders(scoped: scoped, pcfg: pcfg)
     let statusCode: Int
     let data: Data
@@ -315,7 +327,7 @@ private func scopeBodyMatches(_ body: Data) -> Bool {
     return lower.contains("scope") || lower.contains("permission")
 }
 
-private func buildCatalogueURL(
+func buildCatalogueURL(
     scoped: ScopedModels, pcfg: ProviderSpec, endpoint: String
 ) -> String {
     let base = scoped.client.baseURLOverride ?? pcfg.baseURL
@@ -327,7 +339,7 @@ private func buildCatalogueURL(
     return full
 }
 
-private func buildCatalogueHeaders(
+func buildCatalogueHeaders(
     scoped: ScopedModels, pcfg: ProviderSpec
 ) -> [(String, String)] {
     var headers: [(String, String)] = []
