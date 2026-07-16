@@ -258,8 +258,10 @@ private func paginate(
     var cursor = ""
     var all: [ParsedModelRecord] = []
     while true {
-        let endpoint = appendCursor(cfg.endpoint, cfg.cursorParam, cursor)
-        let body = try await fetchCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: endpoint)
+        let body = try await fetchCatalogueURL(
+            scoped: scoped, pcfg: pcfg, endpoint: cfg.endpoint,
+            cursor: cursor, cursorParam: cfg.cursorParam
+        )
         let page = try dispatchParser(cfg.parserKind, body)
         all.append(contentsOf: page.records)
         if page.nextCursor.isEmpty { return all }
@@ -270,10 +272,13 @@ private func paginate(
 //
 //
 //
-private func appendCursor(_ endpoint: String, _ cursorParam: String, _ cursor: String) -> String {
-    if cursor.isEmpty || cursorParam.isEmpty { return endpoint }
-    let sep = endpoint.contains("?") ? "&" : "?"
-    return "\(endpoint)\(sep)\(cursorParam)=\(urlencode(cursor))"
+//
+//
+//
+func appendCursor(_ rawURL: String, _ cursorParam: String, _ cursor: String) -> String {
+    if cursor.isEmpty || cursorParam.isEmpty { return rawURL }
+    let sep = rawURL.contains("?") ? "&" : "?"
+    return "\(rawURL)\(sep)\(cursorParam)=\(urlencode(cursor))"
 }
 
 ///
@@ -292,9 +297,16 @@ private func urlencode(_ s: String) -> String {
 }
 
 private func fetchCatalogueURL(
-    scoped: ScopedModels, pcfg: ProviderSpec, endpoint: String
+    scoped: ScopedModels, pcfg: ProviderSpec, endpoint: String,
+    cursor: String = "", cursorParam: String = ""
 ) async throws -> Data {
-    let url = buildCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: endpoint)
+    //
+    //
+    //
+    let url = appendCursor(
+        buildCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: endpoint),
+        cursorParam, cursor
+    )
     let headers = buildCatalogueHeaders(scoped: scoped, pcfg: pcfg)
     let statusCode: Int
     let data: Data
@@ -315,7 +327,7 @@ private func scopeBodyMatches(_ body: Data) -> Bool {
     return lower.contains("scope") || lower.contains("permission")
 }
 
-private func buildCatalogueURL(
+func buildCatalogueURL(
     scoped: ScopedModels, pcfg: ProviderSpec, endpoint: String
 ) -> String {
     let base = scoped.client.baseURLOverride ?? pcfg.baseURL
@@ -327,7 +339,7 @@ private func buildCatalogueURL(
     return full
 }
 
-private func buildCatalogueHeaders(
+func buildCatalogueHeaders(
     scoped: ScopedModels, pcfg: ProviderSpec
 ) -> [(String, String)] {
     var headers: [(String, String)] = []
