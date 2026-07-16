@@ -1,24 +1,24 @@
 // Code generated — DO NOT EDIT.
 
 
-struct SpeechModelDef: Sendable, Equatable {
-    let modelId: String
-    let label: String
-    let outputMime: String
+public struct SpeechModelDef: Sendable, Equatable {
+    public let modelId: String
+    public let label: String
+    public let outputMime: String
     ///
-    let sampleRateHz: Int
+    public let sampleRateHz: Int
 }
 
-struct SpeechGenDef: Sendable, Equatable {
-    let wireShape: String
+public struct SpeechGenDef: Sendable, Equatable {
+    public let wireShape: String
     ///
-    let audioResponseEncoding: String
-    let genEndpoint: String
-    let voices: [String]
-    let models: [SpeechModelDef]
+    public let audioResponseEncoding: String
+    public let genEndpoint: String
+    public let voices: [String]
+    public let models: [SpeechModelDef]
 }
 
-func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
+public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
     switch provider {
     case .inworld:
         return SpeechGenDef(

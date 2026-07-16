@@ -1,34 +1,34 @@
 // Code generated — DO NOT EDIT.
 
 
-struct VideoModelDef: Sendable, Equatable {
-    let modelId: String
-    let label: String
-    let supportsImageToVideo: Bool
-    let maxDurationSeconds: Int
-    let outputMime: String
-    let resolutions: [String]
+public struct VideoModelDef: Sendable, Equatable {
+    public let modelId: String
+    public let label: String
+    public let supportsImageToVideo: Bool
+    public let maxDurationSeconds: Int
+    public let outputMime: String
+    public let resolutions: [String]
     ///
-    let maxInputImages: Int
+    public let maxInputImages: Int
 }
 
-struct VideoGenDef: Sendable, Equatable {
-    let wireShape: String
+public struct VideoGenDef: Sendable, Equatable {
+    public let wireShape: String
     ///
-    let outputDelivery: String
+    public let outputDelivery: String
     ///
-    let videoBaseURL: String
-    let genEndpoint: String
+    public let videoBaseURL: String
+    public let genEndpoint: String
     ///
-    let pollEndpoint: String
+    public let pollEndpoint: String
     ///
-    let fileEndpoint: String
-    let submitHandleField: String
-    let requiresOutputURI: Bool
-    let models: [VideoModelDef]
+    public let fileEndpoint: String
+    public let submitHandleField: String
+    public let requiresOutputURI: Bool
+    public let models: [VideoModelDef]
 }
 
-func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
+public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
     switch provider {
     case .bedrock:
         return VideoGenDef(

@@ -1,30 +1,30 @@
 // Code generated — DO NOT EDIT.
 
 
-struct ImageModelDef: Sendable, Equatable {
-    let modelId: String
-    let label: String
-    let aspectRatios: [String]
-    let imageSizes: [String]
+public struct ImageModelDef: Sendable, Equatable {
+    public let modelId: String
+    public let label: String
+    public let aspectRatios: [String]
+    public let imageSizes: [String]
     ///
     ///
-    let maxInputImages: Int
+    public let maxInputImages: Int
 }
 
-struct ImageGenDef: Sendable, Equatable {
-    let inputMode: String
-    let outputMode: String
+public struct ImageGenDef: Sendable, Equatable {
+    public let inputMode: String
+    public let outputMode: String
     ///
-    let responseShape: String
-    let usageInputPath: String
-    let usageOutputPath: String
-    let maxInputCount: Int
-    let genEndpoint: String
-    let editEndpoint: String
-    let models: [ImageModelDef]
+    public let responseShape: String
+    public let usageInputPath: String
+    public let usageOutputPath: String
+    public let maxInputCount: Int
+    public let genEndpoint: String
+    public let editEndpoint: String
+    public let models: [ImageModelDef]
 }
 
-func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
+public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
     switch provider {
     case .google:
         return ImageGenDef(
