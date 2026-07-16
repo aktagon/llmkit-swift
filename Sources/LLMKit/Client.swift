@@ -138,6 +138,15 @@ public struct Client: Sendable {
         Providers(client: self)
     }
 
+    /// The Files API builder (ADR-060 / CR-004). `upload().path(p).run()` uploads
+    /// a file and returns a `File` handle to attach to a later prompt via
+    /// `.file(id)`. Fires the `upload` MiddlewareOp (telemetry rides the seam).
+    public func upload() -> Upload {
+        var builder = Upload(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
+        for hook in defaultMiddleware { builder = builder.addMiddleware(hook) }
+        return builder
+    }
+
     /// A fresh tool-using agent (the one stateful builder, ADR-066 SWIFT-004).
     public func agent() -> Agent {
         let agent = Agent(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
