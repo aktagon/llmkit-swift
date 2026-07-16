@@ -53,6 +53,27 @@ public struct Client: Sendable {
     ///
     ///
     ///
+    ///
+    ///
+    public func addHeader(_ name: String, _ value: String) -> Client {
+        var next = http.customHeaders
+        if let index = next.firstIndex(where: { $0.0.caseInsensitiveCompare(name) == .orderedSame }) {
+            next[index] = (name, value)
+        } else {
+            next.append((name, value))
+        }
+        return Client(
+            provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride,
+            http: HTTPClient(session: http.session, customHeaders: next),
+            defaultMiddleware: defaultMiddleware
+        )
+    }
+
+    ///
+    ///
+    ///
+    ///
+    ///
     public func addTelemetry(_ telemetry: Telemetry) -> Client {
         Client(
             provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride,

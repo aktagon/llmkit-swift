@@ -5,9 +5,28 @@ import Foundation
 ///
 struct HTTPClient: Sendable {
     let session: URLSession
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    let customHeaders: [(String, String)]
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, customHeaders: [(String, String)] = []) {
         self.session = session
+        self.customHeaders = customHeaders
+    }
+
+    ///
+    ///
+    ///
+    ///
+    private func applyCustomHeaders(_ request: inout URLRequest) {
+        for (name, value) in customHeaders where request.value(forHTTPHeaderField: name) == nil {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
     }
 
     ///
@@ -28,6 +47,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        applyCustomHeaders(&request)
         guard let payload = body.serialized().data(using: .utf8) else {
             throw LLMKitError.validation(field: "body", message: "could not UTF-8 encode request body")
         }
@@ -42,6 +62,7 @@ struct HTTPClient: Sendable {
 
     ///
     ///
+    ///
     func postJSONSigV4(
         url: String,
         body: JSONValue,
@@ -49,8 +70,7 @@ struct HTTPClient: Sendable {
         secretKey: String,
         sessionToken: String,
         region: String,
-        service: String,
-        callerHeaders: [(String, String)]
+        service: String
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
             throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
@@ -67,7 +87,7 @@ struct HTTPClient: Sendable {
             region: region, service: service, contentType: "application/json"
         )
         for (name, value) in signed { request.setValue(value, forHTTPHeaderField: name) }
-        for (name, value) in callerHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        applyCustomHeaders(&request)
         request.httpBody = payload
 
         let (data, response) = try await session.data(for: request)
@@ -79,14 +99,14 @@ struct HTTPClient: Sendable {
 
     ///
     ///
+    ///
     func getTextSigV4(
         url: String,
         accessKey: String,
         secretKey: String,
         sessionToken: String,
         region: String,
-        service: String,
-        callerHeaders: [(String, String)]
+        service: String
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
             throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
@@ -99,7 +119,7 @@ struct HTTPClient: Sendable {
             region: region, service: service, contentType: "application/json"
         )
         for (name, value) in signed { request.setValue(value, forHTTPHeaderField: name) }
-        for (name, value) in callerHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        applyCustomHeaders(&request)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw LLMKitError.transport("non-HTTP response")
@@ -118,6 +138,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        applyCustomHeaders(&request)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw LLMKitError.transport("non-HTTP response")
@@ -159,6 +180,7 @@ struct HTTPClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        applyCustomHeaders(&request)
         request.httpBody = payload
 
         let (data, response) = try await session.data(for: request)
@@ -185,6 +207,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        applyCustomHeaders(&request)
         request.httpBody = body
 
         let (data, response) = try await session.data(for: request)
@@ -211,6 +234,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        applyCustomHeaders(&request)
         guard let payload = body.serialized().data(using: .utf8) else {
             throw LLMKitError.validation(field: "body", message: "could not UTF-8 encode request body")
         }
