@@ -144,6 +144,24 @@ public struct Client: Sendable {
         for hook in defaultMiddleware { agent.addMiddleware(hook) }
         return agent
     }
+
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    public func supports(_ capability: Capability) -> Bool {
+        switch capability {
+        case .caching: return cachingConfig(provider) != nil
+        case .batching: return batchConfig(provider) != nil
+        case .fileUpload: return fileUploadConfig(provider) != nil
+        case .imageGeneration: return imageGenConfig(provider) != nil
+        default: return true
+        }
+    }
 }
 
 ///
