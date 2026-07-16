@@ -2,41 +2,11 @@ import Foundation
 
 /// Opt-in observability (ADR-054 / ADR-059) — an OTEL GenAI-aligned OTLP span
 /// built on every provider call and handed to a caller-supplied `export`. A port
-/// of Rust's `telemetry.rs`. The generated telemetry constants (OTEL attribute
-/// keys + the operation-name map) are handwritten here alongside the runtime, as
-/// Swift already handwrites `Usage` and `MiddlewareOp` (the ontology data that
-/// the other SDKs co-locate with runtime-coupled types); cross-SDK parity is held
-/// by the telemetry-wire goldens (TEL-011), not by generation.
-
-/// The OTEL GenAI binding facts + attribute mappings (ADR-054). Handwritten
-/// (they reference the handwritten `MiddlewareOp`); a semantic-convention move
-/// is an edit here + a re-anchored golden.
-enum TelemetryConst {
-    static let semconvVersion = "1.29.0"
-    static let tracesPath = "/v1/traces"
-    static let endpointRequired = true
-    static let captureContentDefault = false
-
-    // OTEL GenAI attribute keys (api:mapsToOtelAttribute).
-    static let otelAttrOp = "gen_ai.operation.name"       // Event.op
-    static let otelAttrProvider = "gen_ai.system"          // Event.provider
-    static let otelAttrModel = "gen_ai.request.model"      // Event.model
-    static let otelAttrErr = "error.type"                  // Event.err
-
-    // OTEL GenAI usage attribute keys (llm:otelUsageAttribute).
-    static let otelUsageInput = "gen_ai.usage.input_tokens"
-    static let otelUsageOutput = "gen_ai.usage.output_tokens"
-
-    /// Maps a `MiddlewareOp` to its `gen_ai.operation.name` value; ops without a
-    /// documented semconv value return nil (honest).
-    static func operationName(_ op: MiddlewareOp) -> String? {
-        switch op {
-        case .llmRequest: return "chat"
-        case .toolCall: return "execute_tool"
-        default: return nil
-        }
-    }
-}
+/// of Rust's `telemetry.rs`. The generated telemetry constants (semconv version,
+/// OTEL attribute keys + the operation-name map) are generated from the ontology
+/// (TelemetryConst in TelemetryGen.swift); this file keeps only the runtime — the
+/// `Telemetry` config, the fail-open exporter, and the pure `buildOTLPTraces`
+/// builder whose cross-SDK parity is held by the telemetry-wire goldens (TEL-011).
 
 /// The telemetry export callback: receives the finished OTLP/HTTP proto3-JSON
 /// bytes for one span, called synchronously on the post phase. Mandatory and
