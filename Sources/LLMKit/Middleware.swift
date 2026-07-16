@@ -1,32 +1,13 @@
 import Foundation
 
 /// Middleware runtime — pre-phase veto + post-phase observation. A port of
-/// Rust's `middleware.rs` together with the generated `Event` / `MiddlewareOp` /
-/// `MiddlewarePhase` types (Swift handwrites these alongside the runtime, as it
-/// does `Usage`, rather than emitting a separate generated constants module).
-/// The handwritten capability runtimes fire middleware around each operation
-/// site; user hooks observe every call and may veto in the pre phase.
-
-/// Which side of an operation an `Event` describes.
-public enum MiddlewarePhase: Sendable, Equatable {
-    case pre
-    case post
-}
-
-/// The operation an `Event` describes. Cases mirror the generated `MiddlewareOp`
-/// (the `llm:MiddlewareOp` instances) across the other SDKs; the raw values are
-/// the canonical op labels.
-public enum MiddlewareOp: String, Sendable, Equatable {
-    case llmRequest = "llm_request"
-    case toolCall = "tool_call"
-    case cacheCreate = "cache_create"
-    case upload = "upload"
-    case batchSubmit = "batch_submit"
-    case imageGeneration = "image_generation"
-    case musicGeneration = "music_generation"
-    case videoGeneration = "video_generation"
-    case modelsList = "models_list"
-}
+/// Rust's `middleware.rs`. The `MiddlewareOp` / `MiddlewarePhase` enums are
+/// generated from the ontology (MiddlewareGen.swift); the `Event` struct and
+/// this runtime stay handwritten because they carry runtime coupling (the
+/// `Usage` / duration fields, the `MiddlewareFn` signature) — off the generated
+/// side in Rust too. The handwritten capability runtimes fire middleware around
+/// each operation site; user hooks observe every call and may veto in the pre
+/// phase.
 
 /// The observation record passed to each middleware hook. Fields beyond
 /// op/provider/model/phase are populated only for the ops that carry them
