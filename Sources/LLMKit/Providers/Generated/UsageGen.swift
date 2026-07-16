@@ -1,6 +1,6 @@
-import Foundation
+// Code generated — DO NOT EDIT.
 
-///
+
 ///
 ///
 ///
