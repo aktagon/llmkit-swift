@@ -115,19 +115,19 @@ enum RequestBuilder {
         }
 
         if let schema = options.schema {
-            addStructuredOutput(&body, &headers, schema: schema, provider: config.name)
+            addStructuredOutput(&body, schema: schema, provider: config.name)
         }
 
+        // #23: the full contract-bearing `anthropic-beta` set for this request —
         //
         //
         //
-        //
-        //
-        if Transforms.hasFileParts(msgs), let upload = fileUploadConfig(config.name), !upload.betaHeader.isEmpty {
+        let beta = betaHeaders(config: config, options: options, msgs: msgs)
+        if !beta.isEmpty {
             if let index = headers.firstIndex(where: { $0.0.caseInsensitiveCompare("anthropic-beta") == .orderedSame }) {
-                headers[index].1 = appendBeta(headers[index].1, upload.betaHeader)
+                headers[index].1 = appendBeta(headers[index].1, beta)
             } else {
-                headers.append(("anthropic-beta", upload.betaHeader))
+                headers.append(("anthropic-beta", beta))
             }
         }
 
@@ -182,6 +182,24 @@ enum RequestBuilder {
             url: url, body: body, accessKey: apiKey, secretKey: secretKey,
             sessionToken: sessionToken, region: region, service: config.serviceName
         )
+    }
+
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    static func betaHeaders(config: ProviderSpec, options: PromptOptions, msgs: [Transforms.Msg]) -> String {
+        var beta = ""
+        if options.schema != nil, let def = structuredOutput(config.name), !def.betaHeader.isEmpty {
+            beta = appendBeta(beta, def.betaHeader)
+        }
+        if Transforms.hasFileParts(msgs), let upload = fileUploadConfig(config.name), !upload.betaHeader.isEmpty {
+            beta = appendBeta(beta, upload.betaHeader)
+        }
+        return beta
     }
 
     ///
@@ -320,7 +338,6 @@ enum RequestBuilder {
 
     private static func addStructuredOutput(
         _ body: inout [(String, JSONValue)],
-        _ headers: inout [(String, String)],
         schema: String,
         provider: ProviderName
     ) {
@@ -329,7 +346,8 @@ enum RequestBuilder {
 
         if def.enforceStrict { setAdditionalPropertiesFalse(&parsed) }
         if def.removeAdditionalProps { removeAdditionalProperties(&parsed) }
-        if !def.betaHeader.isEmpty { headers.append(("anthropic-beta", def.betaHeader)) }
+        //
+        //
 
         if def.schemaPlacement == "SiblingOfFormat" {
             JSONObject.insertNested(&body, def.formatField, .string(def.formatType))
