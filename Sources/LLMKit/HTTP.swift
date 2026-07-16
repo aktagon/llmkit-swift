@@ -5,9 +5,28 @@ import Foundation
 /// key testability hook for the request-wire driver.
 struct HTTPClient: Sendable {
     let session: URLSession
+    /// Caller custom headers attached to every request (ADR-052, added via
+    /// `Client.addHeader`). Empty by default. Applied AFTER the SDK-set headers
+    /// (provider auth + required header + signature) and skipped when a header of
+    /// the same name already exists (case-insensitively), so a gateway header
+    /// (e.g. cf-aig-authorization) rides alongside the provider key and can never
+    /// clobber it. The single seam: because `http` is threaded to every builder
+    /// and the catalogue path, carrying the headers here reaches every send path.
+    let customHeaders: [(String, String)]
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, customHeaders: [(String, String)] = []) {
         self.session = session
+        self.customHeaders = customHeaders
+    }
+
+    /// Append the caller custom headers, skipping any name already present on the
+    /// request (HTTP header names are case-insensitive; `value(forHTTPHeaderField:)`
+    /// matches case-insensitively). Mirrors Rust `build_catalogue_headers`'s and
+    /// `apply_unsigned_headers`'s collision skip.
+    private func applyCustomHeaders(_ request: inout URLRequest) {
+        for (name, value) in customHeaders where request.value(forHTTPHeaderField: name) == nil {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
     }
 
     /// POST a JSON body and return the status code + raw response bytes. The
@@ -28,6 +47,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        applyCustomHeaders(&request)
         guard let payload = body.serialized().data(using: .utf8) else {
             throw LLMKitError.validation(field: "body", message: "could not UTF-8 encode request body")
         }
@@ -41,7 +61,8 @@ struct HTTPClient: Sendable {
     }
 
     /// POST a JSON body signed with AWS SigV4 (Bedrock). The signature covers
-    /// the exact bytes sent; `callerHeaders` (ADR-052) ride alongside unsigned.
+    /// the exact bytes sent; the caller custom headers (ADR-052) ride alongside
+    /// unsigned, skipping any already-signed header so the signature is intact.
     func postJSONSigV4(
         url: String,
         body: JSONValue,
@@ -49,8 +70,7 @@ struct HTTPClient: Sendable {
         secretKey: String,
         sessionToken: String,
         region: String,
-        service: String,
-        callerHeaders: [(String, String)]
+        service: String
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
             throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
@@ -67,7 +87,7 @@ struct HTTPClient: Sendable {
             region: region, service: service, contentType: "application/json"
         )
         for (name, value) in signed { request.setValue(value, forHTTPHeaderField: name) }
-        for (name, value) in callerHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        applyCustomHeaders(&request)
         request.httpBody = payload
 
         let (data, response) = try await session.data(for: request)
@@ -78,15 +98,15 @@ struct HTTPClient: Sendable {
     }
 
     /// GET a URL signed with AWS SigV4 (Bedrock async-invoke poll). The empty
-    /// body is signed too; `callerHeaders` (ADR-052) ride alongside unsigned.
+    /// body is signed too; the caller custom headers (ADR-052) ride alongside
+    /// unsigned, skipping any already-signed header so the signature is intact.
     func getTextSigV4(
         url: String,
         accessKey: String,
         secretKey: String,
         sessionToken: String,
         region: String,
-        service: String,
-        callerHeaders: [(String, String)]
+        service: String
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
             throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
@@ -99,7 +119,7 @@ struct HTTPClient: Sendable {
             region: region, service: service, contentType: "application/json"
         )
         for (name, value) in signed { request.setValue(value, forHTTPHeaderField: name) }
-        for (name, value) in callerHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        applyCustomHeaders(&request)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw LLMKitError.transport("non-HTTP response")
@@ -118,6 +138,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        applyCustomHeaders(&request)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw LLMKitError.transport("non-HTTP response")
@@ -159,6 +180,7 @@ struct HTTPClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+        applyCustomHeaders(&request)
         request.httpBody = payload
 
         let (data, response) = try await session.data(for: request)
@@ -185,6 +207,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        applyCustomHeaders(&request)
         request.httpBody = body
 
         let (data, response) = try await session.data(for: request)
@@ -211,6 +234,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        applyCustomHeaders(&request)
         guard let payload = body.serialized().data(using: .utf8) else {
             throw LLMKitError.validation(field: "body", message: "could not UTF-8 encode request body")
         }
