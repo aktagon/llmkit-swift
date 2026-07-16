@@ -213,6 +213,7 @@ func ontologyCapabilities(_ provider: ProviderName, _ modelID: String) -> [Capab
 struct CatalogueConfig: Sendable {
     let endpoint: String
     let pagination: String
+    let cursorParam: String
     let parserKind: String
     let specURL: String
     let specFormat: String
@@ -221,6 +222,7 @@ struct CatalogueConfig: Sendable {
 private let anthropicCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "CursorByLastID",
+    cursorParam: "after_id",
     parserKind: "ParseAnthropicModels",
     specURL: "https://github.com/anthropics/anthropic-sdk-typescript/blob/main/api.md",
     specFormat: "OpenAPI3"
@@ -229,6 +231,7 @@ private let anthropicCatalogue = CatalogueConfig(
 private let cerebrasCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
@@ -237,6 +240,7 @@ private let cerebrasCatalogue = CatalogueConfig(
 private let deepseekCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
@@ -245,6 +249,7 @@ private let deepseekCatalogue = CatalogueConfig(
 private let fireworksCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
@@ -253,6 +258,7 @@ private let fireworksCatalogue = CatalogueConfig(
 private let googleCatalogue = CatalogueConfig(
     endpoint: "/v1beta/models",
     pagination: "CursorOpaqueToken",
+    cursorParam: "pageToken",
     parserKind: "ParseGoogleModels",
     specURL: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta",
     specFormat: "GoogleDiscovery"
@@ -261,6 +267,7 @@ private let googleCatalogue = CatalogueConfig(
 private let grokCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
@@ -269,6 +276,7 @@ private let grokCatalogue = CatalogueConfig(
 private let groqCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
@@ -277,6 +285,7 @@ private let groqCatalogue = CatalogueConfig(
 private let janCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
@@ -285,6 +294,7 @@ private let janCatalogue = CatalogueConfig(
 private let llamacppCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
@@ -293,6 +303,7 @@ private let llamacppCatalogue = CatalogueConfig(
 private let lmstudioCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
@@ -301,6 +312,7 @@ private let lmstudioCatalogue = CatalogueConfig(
 private let mistralCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/openapi.yaml",
     specFormat: "OpenAPI3"
@@ -309,6 +321,7 @@ private let mistralCatalogue = CatalogueConfig(
 private let moonshotCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
@@ -317,6 +330,7 @@ private let moonshotCatalogue = CatalogueConfig(
 private let ollamaCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "https://raw.githubusercontent.com/ollama/ollama/main/docs/openapi.yaml",
     specFormat: "OpenAPI3"
@@ -325,6 +339,7 @@ private let ollamaCatalogue = CatalogueConfig(
 private let openaiCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "https://github.com/openai/openai-openapi/blob/master/openapi.yaml",
     specFormat: "OpenAPI3"
@@ -333,6 +348,7 @@ private let openaiCatalogue = CatalogueConfig(
 private let openrouterCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "https://openrouter.ai/openapi.json",
     specFormat: "OpenAPI3"
@@ -341,6 +357,7 @@ private let openrouterCatalogue = CatalogueConfig(
 private let qwenCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
@@ -349,6 +366,7 @@ private let qwenCatalogue = CatalogueConfig(
 private let togetherCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "https://raw.githubusercontent.com/togethercomputer/openapi/main/openapi.yaml",
     specFormat: "OpenAPI3"
@@ -357,6 +375,7 @@ private let togetherCatalogue = CatalogueConfig(
 private let vllmCatalogue = CatalogueConfig(
     endpoint: "/v1/models",
     pagination: "PaginationNone",
+    cursorParam: "",
     parserKind: "ParseOpenAICohortModels",
     specURL: "",
     specFormat: ""
