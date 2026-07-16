@@ -6,6 +6,9 @@ import Foundation
 final class MockURLProtocol: URLProtocol {
     static var capturedBody: Data?
     static var capturedHeaders: [String: String] = [:]
+    /// Every request URL served, in order (drives catalogue pagination-cursor
+    /// assertions where the sequence alone cannot prove the cursor was appended).
+    static var capturedURLs: [String] = []
     static var responseStatusCode = 200
     static var responseBody = Data()
     /// When set, successive requests are served the queued bodies in order (the
@@ -16,6 +19,7 @@ final class MockURLProtocol: URLProtocol {
     static func reset() {
         capturedBody = nil
         capturedHeaders = [:]
+        capturedURLs = []
         responseStatusCode = 200
         responseBody = Data()
         responseSequence = nil
@@ -42,6 +46,9 @@ final class MockURLProtocol: URLProtocol {
 
     override func startLoading() {
         MockURLProtocol.capturedBody = MockURLProtocol.body(from: request)
+        if let url = request.url?.absoluteString {
+            MockURLProtocol.capturedURLs.append(url)
+        }
         // Lowercase the header keys to match the cross-SDK comparator's
         // case-insensitive subset match (HANDOFF-028).
         var headers: [String: String] = [:]
