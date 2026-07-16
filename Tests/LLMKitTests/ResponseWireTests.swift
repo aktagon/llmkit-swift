@@ -222,4 +222,53 @@ final class ResponseWireTests: XCTestCase {
     func testTranscriptionOpenAI() async throws {
         try await driveTranscription(shape: "transcription-openai", provider: .openai, model: "whisper-1")
     }
+
+    /// Catalogue variant (ADR-067 Fix B): feed an anchored `/models` reply
+    /// (`bodies/models-<provider>.json`, a real ADR-019 capture) through the
+    /// handwritten parse seam and assert the decoded `ParsedModelsPage` projects
+    /// to the catalogue discriminant `{kind:"models", count, firstId, lastId,
+    /// nextCursor, first{...}}` — the same body must decode to the same model
+    /// list + pagination cursor across all five SDKs. The `nextCursor` field
+    /// exercises the cursor extraction (ADR-067 Fix A: has_more/last_id,
+    /// nextPageToken, or empty). URL/auth assembly is a separate request-side
+    /// golden — this member is the parse seam only.
+    private func driveModels(shape: String, parse: (Data) throws -> ParsedModelsPage) throws {
+        let body = try Data(contentsOf: TestPaths.testdata("wire/response/v1/bodies/\(shape).json"))
+        let page = try parse(body)
+        let first = page.records.first
+
+        let projection = JSONValue.object([
+            ("content", .object([
+                ("count", .int(Int64(page.records.count))),
+                ("first", .object([
+                    ("contextWindow", .int(Int64(first?.contextWindow ?? 0))),
+                    ("displayName", .string(first?.displayName ?? "")),
+                    ("maxOutput", .int(Int64(first?.maxOutput ?? 0))),
+                ])),
+                ("firstId", .string(first?.id ?? "")),
+                ("kind", .string("models")),
+                ("lastId", .string(page.records.last?.id ?? "")),
+                ("nextCursor", .string(page.nextCursor)),
+            ])),
+            ("error", .null),
+        ])
+
+        try TestPaths.writeResponseArtifact(shape: shape, projection: projection)
+        let goldenText = try String(
+            contentsOf: TestPaths.testdata("wire/response/v1/\(shape).json"), encoding: .utf8
+        )
+        XCTAssertEqual(projection, try JSONValue.parse(goldenText), "\(shape) projection differs from shared golden")
+    }
+
+    func testModelsAnthropic() throws {
+        try driveModels(shape: "models-anthropic", parse: parseAnthropicModelsResponse)
+    }
+
+    func testModelsOpenAI() throws {
+        try driveModels(shape: "models-openai", parse: parseOpenAICohortModelsResponse)
+    }
+
+    func testModelsGoogle() throws {
+        try driveModels(shape: "models-google", parse: parseGoogleModelsResponse)
+    }
 }
