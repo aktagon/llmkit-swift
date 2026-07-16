@@ -180,7 +180,7 @@ enum RequestBuilder {
         let sessionToken = config.sessionTokenEnvVar.isEmpty ? "" : (env[config.sessionTokenEnvVar] ?? "")
         return try await http.postJSONSigV4(
             url: url, body: body, accessKey: apiKey, secretKey: secretKey,
-            sessionToken: sessionToken, region: region, service: config.serviceName, callerHeaders: []
+            sessionToken: sessionToken, region: region, service: config.serviceName
         )
     }
 

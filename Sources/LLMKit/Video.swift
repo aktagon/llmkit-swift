@@ -238,7 +238,7 @@ public struct Video: Sendable {
             let sessionToken = config.sessionTokenEnvVar.isEmpty ? "" : (env[config.sessionTokenEnvVar] ?? "")
             (status, data) = try await http.postJSONSigV4(
                 url: url, body: body, accessKey: apiKey, secretKey: secretKey,
-                sessionToken: sessionToken, region: region, service: config.serviceName, callerHeaders: []
+                sessionToken: sessionToken, region: region, service: config.serviceName
             )
         } else {
             (status, data) = try await http.postJSON(url: url, body: body, headers: headers)

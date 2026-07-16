@@ -48,6 +48,27 @@ public struct Client: Sendable {
         )
     }
 
+    /// Attach a custom HTTP header to every request for this client; calls
+    /// accumulate (a repeated name replaces its prior value, case-insensitively).
+    /// Applied after the provider auth + required headers and skipped on a
+    /// case-insensitive collision, so a gateway header (e.g.
+    /// `cf-aig-authorization`) rides alongside the provider key and can never
+    /// clobber it (ADR-052). Mirrors Go `AddHeader` / TS `addHeader` /
+    /// Python+Rust `add_header`.
+    public func addHeader(_ name: String, _ value: String) -> Client {
+        var next = http.customHeaders
+        if let index = next.firstIndex(where: { $0.0.caseInsensitiveCompare(name) == .orderedSame }) {
+            next[index] = (name, value)
+        } else {
+            next.append((name, value))
+        }
+        return Client(
+            provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride,
+            http: HTTPClient(session: http.session, customHeaders: next),
+            defaultMiddleware: defaultMiddleware
+        )
+    }
+
     /// Enable opt-in telemetry on this client (ADR-054/ADR-059). The export hook
     /// rides the middleware seam, so every capability builder that carries it
     /// (text/agent/image/music/video) emits one OTEL span on the post phase.
