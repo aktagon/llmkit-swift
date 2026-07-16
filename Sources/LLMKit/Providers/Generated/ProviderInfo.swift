@@ -5,18 +5,18 @@
 /// stable catalogue (typed identity, env var, default model, base URL). A
 /// projection of the same facts that feed the internal ProviderSpec, so the
 /// two cannot drift.
-struct ProviderInfo: Sendable, Equatable {
-    let id: ProviderName
-    let slug: String
-    let envVar: String
-    let defaultModel: String
-    let baseURL: String
+public struct ProviderInfo: Sendable, Equatable {
+    public let id: ProviderName
+    public let slug: String
+    public let envVar: String
+    public let defaultModel: String
+    public let baseURL: String
     /// ADR-035: host serves CORS for direct browser calls (coarse).
-    let browserCallable: Bool
+    public let browserCallable: Bool
 }
 
 /// Public metadata for a provider. Total over ProviderName (ADR-040 PSR-001).
-func providerInfo(_ provider: ProviderName) -> ProviderInfo {
+public func providerInfo(_ provider: ProviderName) -> ProviderInfo {
     switch provider {
     case .ai21:
         return ProviderInfo(
@@ -347,6 +347,6 @@ func providerInfo(_ provider: ProviderName) -> ProviderInfo {
 
 /// Public metadata for every provider, sorted by slug (extract.py orders
 /// providers alphabetically).
-func allProviderInfo() -> [ProviderInfo] {
+public func allProviderInfo() -> [ProviderInfo] {
     ProviderName.allCases.map(providerInfo)
 }
