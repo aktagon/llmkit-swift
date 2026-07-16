@@ -258,7 +258,7 @@ private func paginate(
     var cursor = ""
     var all: [ParsedModelRecord] = []
     while true {
-        let endpoint = appendCursor(cfg.endpoint, cfg.pagination, cursor)
+        let endpoint = appendCursor(cfg.endpoint, cfg.cursorParam, cursor)
         let body = try await fetchCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: endpoint)
         let page = try dispatchParser(cfg.parserKind, body)
         all.append(contentsOf: page.records)
@@ -267,17 +267,13 @@ private func paginate(
     }
 }
 
-private func appendCursor(_ endpoint: String, _ pagination: String, _ cursor: String) -> String {
-    if cursor.isEmpty { return endpoint }
+// Splices the pagination cursor into the URL using the cursor query-param
+// name carried by the generated CatalogueConfig (ADR-067 Fix A). An empty
+// cursor or an empty cursorParam (PaginationNone) leaves the URL unchanged.
+private func appendCursor(_ endpoint: String, _ cursorParam: String, _ cursor: String) -> String {
+    if cursor.isEmpty || cursorParam.isEmpty { return endpoint }
     let sep = endpoint.contains("?") ? "&" : "?"
-    switch pagination {
-    case "CursorByLastID":
-        return "\(endpoint)\(sep)after_id=\(urlencode(cursor))"
-    case "CursorOpaqueToken":
-        return "\(endpoint)\(sep)pageToken=\(urlencode(cursor))"
-    default:
-        return endpoint
-    }
+    return "\(endpoint)\(sep)\(cursorParam)=\(urlencode(cursor))"
 }
 
 /// Minimal percent-encoder for the cursor-token use case; matches RFC 3986
