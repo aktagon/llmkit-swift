@@ -100,7 +100,7 @@ enum CachingRuntime {
         }
 
         let base = baseURLOverride ?? config.baseURL
-        let createURL = "\(base)\(lifecycle.createEndpoint)?\(config.authQueryParam)=\(apiKey)"
+        let createURL = "\(base)\(lifecycle.createEndpoint)?\(config.authQueryParam)=\(urlencode(apiKey))"
         let createBody = JSONValue.object([
             ("model", .string("models/\(model)")),
             ("ttl", .string("\(ttl)s")),
