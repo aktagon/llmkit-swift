@@ -220,7 +220,7 @@ public struct Image: Sendable {
         let body: JSONValue
         switch imgCfg.inputMode {
         case "JSONInlineRefs":
-            body = hasImages ? buildXAIEditBody(parts, model) : buildXAIGenBody(parts, model)
+            body = .object(hasImages ? buildXAIEditBody(parts, model) : buildXAIGenBody(parts, model))
             url = base + (hasImages ? imgCfg.editEndpoint : imgCfg.genEndpoint)
         case "JSONGenerations":
             body = buildRecraftBody(parts, model)
@@ -236,11 +236,13 @@ public struct Image: Sendable {
             url = RequestBuilder.buildURL(
                 config: config, endpoint: config.endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
             )
-        default: // InlineParts (Google generateContent)
+        case "InlineParts": // Google generateContent
             body = buildGoogleBody(parts)
             url = RequestBuilder.buildURL(
                 config: config, endpoint: config.endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
             )
+        default:
+            throw LLMKitError.unsupported("image generation: unknown input mode \"\(imgCfg.inputMode)\"")
         }
 
         let (statusCode, data) = try await http.postJSON(url: url, body: body, headers: headers)
@@ -249,7 +251,7 @@ public struct Image: Sendable {
         }
         let raw = try JSONValue.parse(String(decoding: data, as: UTF8.self))
         // Response parser selected by config shape, never provider name (BUG-024).
-        return parseResponse(raw, imgCfg)
+        return try parseResponse(raw, imgCfg)
     }
 
     // MARK: - Request bodies
@@ -315,10 +317,10 @@ public struct Image: Sendable {
         return .object(body)
     }
 
-    /// xAI Grok `/v1/images/generations` JSON body. `image_size` maps to
+    /// xAI Grok `/v1/images/generations` JSON body pairs. `image_size` maps to
     /// `resolution` (xAI's name); `response_format=b64_json` is forced (xAI
-    /// defaults to URL).
-    private func buildXAIGenBody(_ parts: [ImagePart], _ model: String) -> JSONValue {
+    /// defaults to URL). Returns the pair array so the edit body can extend it.
+    private func buildXAIGenBody(_ parts: [ImagePart], _ model: String) -> [(String, JSONValue)] {
         var body: [(String, JSONValue)] = [
             ("model", .string(model)),
             ("prompt", .string(joinText(parts))),
@@ -327,13 +329,13 @@ public struct Image: Sendable {
         if let ratio = options.aspectRatio { body.append(("aspect_ratio", .string(ratio))) }
         if let size = options.imageSize { body.append(("resolution", .string(size))) }
         if let count = options.count { body.append(("n", .int(Int64(count)))) }
-        return .object(body)
+        return body
     }
 
-    /// xAI Grok `/v1/images/edits` body: one reference image maps to
+    /// xAI Grok `/v1/images/edits` body pairs: one reference image maps to
     /// `image: {url: "data:..."}`, multiple to `images: [...]` in caller order.
-    private func buildXAIEditBody(_ parts: [ImagePart], _ model: String) -> JSONValue {
-        guard case var .object(body) = buildXAIGenBody(parts, model) else { return .object([]) }
+    private func buildXAIEditBody(_ parts: [ImagePart], _ model: String) -> [(String, JSONValue)] {
+        var body = buildXAIGenBody(parts, model)
         let refs: [JSONValue] = parts.compactMap { part in
             guard case let .image(media) = part else { return nil }
             let mime = media.mimeType.isEmpty ? "image/png" : media.mimeType
@@ -345,7 +347,7 @@ public struct Image: Sendable {
         } else if refs.count > 1 {
             JSONObject.set(&body, "images", .array(refs))
         }
-        return .object(body)
+        return body
     }
 
     /// Vertex AI Imagen `:predict` body: an `instances`/`parameters` envelope.
@@ -371,14 +373,16 @@ public struct Image: Sendable {
 
     // MARK: - Response parsing (selected by responseShape, never provider name)
 
-    private func parseResponse(_ raw: JSONValue, _ cfg: ImageGenDef) -> ImageResponse {
+    private func parseResponse(_ raw: JSONValue, _ cfg: ImageGenDef) throws -> ImageResponse {
         switch cfg.responseShape {
         case "DataArrayB64Json":
             return parseDataArray(raw, inputPath: cfg.usageInputPath, outputPath: cfg.usageOutputPath)
         case "VertexPredictions":
             return parseVertexResponse(raw)
-        default: // GoogleParts
+        case "GoogleParts":
             return parseGoogleParts(raw, cfg)
+        default:
+            throw LLMKitError.unsupported("image generation: unknown response shape \"\(cfg.responseShape)\"")
         }
     }
 

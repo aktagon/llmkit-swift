@@ -1,5 +1,21 @@
 import Foundation
 
+/// Minimal percent-encoder for query-parameter values (API keys, pagination
+/// cursors); escapes everything outside the RFC 3986 unreserved set. Shared by
+/// every seam that splices a value into a URL query string.
+func urlencode(_ s: String) -> String {
+    var out = ""
+    for byte in s.utf8 {
+        switch byte {
+        case 0x41...0x5A, 0x61...0x7A, 0x30...0x39, 0x2D, 0x5F, 0x2E, 0x7E:
+            out.unicodeScalars.append(UnicodeScalar(byte))
+        default:
+            out += String(format: "%%%02X", byte)
+        }
+    }
+    return out
+}
+
 /// Thin transport over Foundation `URLSession` (ADR-066 SWIFT-003). The session
 /// is injected so tests can supply a mock (a `URLProtocol`-backed session), the
 /// key testability hook for the request-wire driver.
