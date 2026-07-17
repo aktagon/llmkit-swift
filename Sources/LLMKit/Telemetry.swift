@@ -72,7 +72,7 @@ enum TelemetryRuntime {
         let input = event.usage?.input ?? 0
         let output = event.usage?.output ?? 0
         let errorType = event.err.map(classifyError) ?? ""
-        let now = String(UInt64(max(0, Date().timeIntervalSince1970)) * 1_000_000_000)
+        let now = String(UInt64(max(0, Date().timeIntervalSince1970 * 1_000_000_000)))
         return buildOTLPTraces(
             operationName: op, provider: event.provider, model: event.model,
             inputTokens: input, outputTokens: output, errorType: errorType,
@@ -144,10 +144,14 @@ enum TelemetryRuntime {
     ///
     ///
     ///
+    ///
+    ///
+    ///
+    ///
     static func classifyError(_ err: String) -> String {
         if err.isEmpty { return "" }
         if err.hasPrefix("validation:") { return "validation_error" }
-        if err.hasPrefix("http:") || err.hasPrefix("json:")
+        if err.hasPrefix("transport:") || err.hasPrefix("decoding:")
             || err.hasPrefix("unsupported:") || err.hasPrefix("middleware veto:") {
             return "error"
         }
