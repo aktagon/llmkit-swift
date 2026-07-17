@@ -332,6 +332,9 @@ public struct Text: Sendable {
     @discardableResult
     public func stream(_ userPrompt: String, _ onDelta: (String) -> Void) async throws -> Response {
         let config = providerConfig(provider)
+        guard options.proto.isEmpty else {
+            throw LLMKitError.validation(field: "protocol", message: "stream supports only the default chat protocol")
+        }
         let model = try RequestBuilder.resolveModel(config, modelOverride)
         return try await Streamer.run(
             config: config, apiKey: apiKey, model: model, system: systemPrompt,
