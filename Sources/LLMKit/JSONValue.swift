@@ -34,8 +34,15 @@ extension JSONValue: Equatable {
         case let (.array(a), .array(b)): return a == b
         case let (.object(a), .object(b)):
             guard a.count == b.count else { return false }
-            let da = Dictionary(a, uniquingKeysWith: { first, _ in first })
-            let db = Dictionary(b, uniquingKeysWith: { first, _ in first })
+            // Group values per key (order preserved within a key) so equality
+            // stays order-insensitive across distinct keys, but duplicate-key
+            // value lists must match — deduping would call
+            // [("k",1),("k",1)] equal to [("k",1),("k",2)] even though they
+            // serialize differently.
+            var da: [String: [JSONValue]] = [:]
+            for (key, value) in a { da[key, default: []].append(value) }
+            var db: [String: [JSONValue]] = [:]
+            for (key, value) in b { db[key, default: []].append(value) }
             return da == db
         default:
             return false
@@ -195,6 +202,9 @@ extension JSONValue {
         var parser = Parser(Array(text))
         let value = try parser.parseValue()
         parser.skipWhitespace()
+        guard parser.index >= parser.scalars.count else {
+            throw ParseError.unexpected(parser.scalars[parser.index], at: parser.index)
+        }
         return value
     }
 
@@ -320,13 +330,34 @@ extension JSONValue {
         }
 
         mutating func parseUnicodeEscape() throws -> Character {
+            let code = try parseHexCodeUnit()
+            if (0xD800...0xDBFF).contains(code) {
+                // High surrogate: legal only as the first half of a
+                // \uXXXX\uXXXX pair (how JSON escapes non-BMP characters).
+                // Require the literal low-surrogate escape and combine per
+                // UTF-16.
+                guard index + 2 <= scalars.count, scalars[index] == "\\", scalars[index + 1] == "u" else {
+                    throw ParseError.invalidEscape
+                }
+                index += 2
+                let low = try parseHexCodeUnit()
+                guard (0xDC00...0xDFFF).contains(low) else { throw ParseError.invalidEscape }
+                let combined = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)
+                guard let scalar = Unicode.Scalar(combined) else { throw ParseError.invalidEscape }
+                return Character(scalar)
+            }
+            // A lone low surrogate is not a valid scalar; Unicode.Scalar
+            // rejects it here (matching strict JSON decoders).
+            guard let scalar = Unicode.Scalar(code) else { throw ParseError.invalidEscape }
+            return Character(scalar)
+        }
+
+        mutating func parseHexCodeUnit() throws -> UInt32 {
             guard index + 4 <= scalars.count else { throw ParseError.unexpectedEnd }
             let hex = String(scalars[index..<index + 4])
-            guard let code = UInt32(hex, radix: 16), let scalar = Unicode.Scalar(code) else {
-                throw ParseError.invalidEscape
-            }
+            guard let code = UInt32(hex, radix: 16) else { throw ParseError.invalidEscape }
             index += 4
-            return Character(scalar)
+            return code
         }
 
         mutating func parseBool() throws -> JSONValue {
