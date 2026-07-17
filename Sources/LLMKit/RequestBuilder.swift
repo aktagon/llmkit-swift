@@ -47,6 +47,8 @@ enum RequestBuilder {
         tools: [Tool],
         options: PromptOptions
     ) throws -> (body: JSONValue, headers: [(String, String)]) {
+        try validateOptions(config: config, options: options)
+
         var body: [(String, JSONValue)] = []
         var headers = buildAuthHeaders(config: config, apiKey: apiKey)
 
@@ -257,6 +259,49 @@ enum RequestBuilder {
     }
 
     //
+
+    ///
+    ///
+    ///
+    ///
+    ///
+    static func validateOptions(config: ProviderSpec, options: PromptOptions) throws {
+        let supported = supportedOptions(config.name)
+        guard !supported.isEmpty else { return }
+        func has(_ key: OptionKey) -> Bool {
+            supported.contains { $0.key == key }
+        }
+        if options.topK != nil, !has(.topK) {
+            throw LLMKitError.validation(field: "top_k", message: "not supported by \(config.slug)")
+        }
+        if options.seed != nil, !has(.seed) {
+            throw LLMKitError.validation(field: "seed", message: "not supported by \(config.slug)")
+        }
+        if options.frequencyPenalty != nil, !has(.frequencyPenalty) {
+            throw LLMKitError.validation(field: "frequency_penalty", message: "not supported by \(config.slug)")
+        }
+        if options.presencePenalty != nil, !has(.presencePenalty) {
+            throw LLMKitError.validation(field: "presence_penalty", message: "not supported by \(config.slug)")
+        }
+        if options.thinkingBudget != nil, !has(.thinkingBudget) {
+            throw LLMKitError.validation(field: "thinking_budget", message: "not supported by \(config.slug)")
+        }
+        if let effort = options.reasoningEffort {
+            if !has(.reasoningEffort) {
+                throw LLMKitError.validation(field: "reasoning_effort", message: "not supported by \(config.slug)")
+            }
+            //
+            //
+            if let override = optionOverrides(config.name).first(
+                where: { $0.key == .reasoningEffort && !$0.allowedValues.isEmpty }),
+                !override.allowedValues.contains(effort) {
+                throw LLMKitError.validation(
+                    field: "reasoning_effort",
+                    message: "invalid value \"\(effort)\", must be one of: \(override.allowedValues.joined(separator: ","))"
+                )
+            }
+        }
+    }
 
     ///
     ///
