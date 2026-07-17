@@ -9,21 +9,35 @@ import Foundation
 /// credential-bearing, transport-holding *live* handle is a handwritten wrapper
 /// (`BatchJob`) around it. `BatchJob.handle` is the persistable value for
 /// cross-process resume (ADR-014).
-public final class BatchJob {
+public final class BatchJob: Sendable {
     /// The persistable identity value (ADR-014 cross-process resume).
     public let handle: BatchHandle
     let apiKey: String
     let http: HTTPClient
     let baseURLOverride: String?
-    /// Poll cadence for `wait` (tests shrink these; defaults match Rust/Go).
-    var interval: TimeInterval = 2
-    var timeout: TimeInterval = 600
+    /// Poll cadence for `wait` (tests shrink these via `cadence`; defaults match Rust/Go).
+    let interval: TimeInterval
+    let timeout: TimeInterval
 
-    init(handle: BatchHandle, apiKey: String, http: HTTPClient, baseURLOverride: String?) {
+    init(
+        handle: BatchHandle, apiKey: String, http: HTTPClient, baseURLOverride: String?,
+        interval: TimeInterval = 2, timeout: TimeInterval = 600
+    ) {
         self.handle = handle
         self.apiKey = apiKey
         self.http = http
         self.baseURLOverride = baseURLOverride
+        self.interval = interval
+        self.timeout = timeout
+    }
+
+    /// A copy with the same identity + transport and the given poll cadence
+    /// (internal test seam).
+    func cadence(interval: TimeInterval, timeout: TimeInterval) -> BatchJob {
+        BatchJob(
+            handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
+            interval: interval, timeout: timeout
+        )
     }
 
     /// One normalized poll round-trip (ADR-063 POLL-001): no loop.

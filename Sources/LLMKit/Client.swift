@@ -330,7 +330,7 @@ public struct Text: Sendable {
     /// Stream a single-turn prompt, invoking `onDelta` per text chunk, and return
     /// the assembled response (ADR-064: stream is a text execution mode).
     @discardableResult
-    public func stream(_ userPrompt: String, _ onDelta: (String) -> Void) async throws -> Response {
+    public func stream(_ userPrompt: String, _ onDelta: @Sendable (String) -> Void) async throws -> Response {
         let config = providerConfig(provider)
         guard options.proto.isEmpty else {
             throw LLMKitError.validation(field: "protocol", message: "stream supports only the default chat protocol")
