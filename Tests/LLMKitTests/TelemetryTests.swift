@@ -55,11 +55,83 @@ final class TelemetryTests: XCTestCase {
         XCTAssertEqual(response.text, "Helsinki")
     }
 
-    func testClassifyErrorPrefixes() {
-        XCTAssertEqual(TelemetryRuntime.classifyError("validation: model - none"), "validation_error")
-        XCTAssertEqual(TelemetryRuntime.classifyError("unsupported: nope"), "error")
-        XCTAssertEqual(TelemetryRuntime.classifyError("openai: rate limited (429)"), "api_error")
+    /// Round-trip: classification is asserted on the exact strings the runtime
+    /// renders via `Middleware.errString` for REAL thrown errors — never on
+    /// hand-written strings the runtime does not produce.
+    func testErrStringClassificationRoundTrip() {
+        let validation = LLMKitError.validation(field: "model", message: "no model configured for openai")
+        XCTAssertEqual(Middleware.errString(validation), "validation: model - no model configured for openai")
+        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(validation)), "validation_error")
+
+        let unsupported = LLMKitError.unsupported("batch create: empty batch ID")
+        XCTAssertEqual(Middleware.errString(unsupported), "unsupported: batch create: empty batch ID")
+        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(unsupported)), "error")
+
+        let transport = LLMKitError.transport("connection reset by peer")
+        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(transport)), "error")
+
+        let decoding = LLMKitError.decoding("response carried no choices")
+        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(decoding)), "error")
+
+        struct RateLimitPolicy: Error {}
+        let veto = MiddlewareVeto(cause: RateLimitPolicy())
+        XCTAssertTrue(Middleware.errString(veto).hasPrefix("middleware veto: "))
+        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(veto)), "error")
+
+        let api = LLMKitError.api(provider: "openai", statusCode: 429, message: "rate limited")
+        XCTAssertEqual(Middleware.errString(api), "openai: rate limited (429)")
+        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(api)), "api_error")
+
         XCTAssertEqual(TelemetryRuntime.classifyError(""), "")
+    }
+
+    /// End-to-end: a real validation rejection inside the llmRequest fire scope
+    /// (caching on a provider without a caching config) must export a span whose
+    /// error.type is "validation_error" — not the api_error fallback the old
+    /// reflection-rendered Event.err always produced.
+    func testRejectionSpanCarriesValidationErrorType() async throws {
+        MockURLProtocol.reset()
+        let recorder = Recorder()
+        let client = Client(provider: .grok, apiKey: "key", session: MockURLProtocol.makeSession())
+            .addTelemetry(Telemetry(export: { recorder.record($0) }))
+        do {
+            _ = try await client.text.model("grok-4").caching().prompt("Capital of Finland?")
+            XCTFail("caching on grok must reject pre-flight")
+        } catch LLMKitError.validation(let field, _) {
+            XCTAssertEqual(field, "caching")
+        }
+        XCTAssertEqual(recorder.payloads.count, 1)
+        let span = try JSONValue.parse(try XCTUnwrap(recorder.payloads.first))
+        let attrs = try XCTUnwrap(spanAttributes(span))
+        XCTAssertEqual(attrs["error.type"], "validation_error")
+    }
+
+    /// The catalogue path fires the client-scoped default middleware (one
+    /// modelsList pre+post pair per list() call), so telemetry observes live
+    /// catalogue calls too.
+    func testModelsListFiresClientMiddleware() async throws {
+        MockURLProtocol.reset()
+        let body = #"{"object":"list","data":[{"id":"gpt-5","object":"model","created":1715367049,"owned_by":"system"}]}"#
+        MockURLProtocol.responseBody = Data(body.utf8)
+
+        final class PhaseRecorder: @unchecked Sendable {
+            var fires: [(MiddlewareOp, MiddlewarePhase)] = []
+        }
+        let phases = PhaseRecorder()
+        let client = Client(provider: .openai, apiKey: "key", session: MockURLProtocol.makeSession())
+            .baseURL("https://mock.test")
+            .addMiddleware { event in
+                phases.fires.append((event.op, event.phase))
+                return nil
+            }
+
+        let models = try await client.models.provider(.openai).list()
+        XCTAssertEqual(models.count, 1)
+        XCTAssertEqual(phases.fires.count, 2, "exactly one pre+post pair per list() call")
+        XCTAssertEqual(phases.fires[0].0, .modelsList)
+        XCTAssertEqual(phases.fires[0].1, .pre)
+        XCTAssertEqual(phases.fires[1].0, .modelsList)
+        XCTAssertEqual(phases.fires[1].1, .post)
     }
 
     /// Extract the single span's attributes as a flat [key: stringValueOrIntValue].

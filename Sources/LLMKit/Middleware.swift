@@ -88,4 +88,28 @@ enum Middleware {
         event.phase = .post
         for hook in mws { _ = hook(event) }
     }
+
+    /// Renders an error to the canonical `Event.err` string. Swift's default
+    /// interpolation of an enum error renders its REFLECTION
+    /// (`validation(field: "model", message: ...)`), not `errorDescription`, so
+    /// every fire site routes through this helper to get the stable prefix
+    /// forms telemetry classification keys off (mirror of Rust's `Display`).
+    static func errString(_ error: any Error) -> String {
+        if let veto = error as? MiddlewareVeto {
+            return "middleware veto: \(errString(veto.cause))"
+        }
+        if let known = error as? LLMKitError {
+            // `.unsupported` renders bare (no prefix) for callers; the
+            // canonical middleware string carries the Rust-parity prefix so
+            // classification maps it to "error", not the "api_error" fallback.
+            if case let .unsupported(message) = known {
+                return "unsupported: \(message)"
+            }
+            return known.errorDescription ?? "\(known)"
+        }
+        if let localized = error as? LocalizedError, let description = localized.errorDescription {
+            return description
+        }
+        return "\(error)"
+    }
 }

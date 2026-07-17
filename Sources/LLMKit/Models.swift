@@ -209,15 +209,26 @@ func catalogueRunList(_ scoped: ScopedModels) async throws -> [ModelInfo] {
     guard let cfg = catalogueConfig(scoped.target) else { throw CatalogueError.notSupported }
     let pcfg = providerConfig(scoped.target)
 
+    let mws = scoped.client.defaultMiddleware
     let baseEvent = Event(op: .modelsList, provider: providerNameSlug(scoped.target), model: "")
+    let start = Date()
     do {
-        try Middleware.firePre([], baseEvent)
+        try Middleware.firePre(mws, baseEvent)
     } catch {
-        throw CatalogueError.unavailable("middleware veto: \(error)")
+        throw CatalogueError.unavailable(Middleware.errString(error))
     }
-    let records = try await paginate(scoped: scoped, pcfg: pcfg, cfg: cfg)
-    Middleware.firePost([], baseEvent)
-    return enrich(scoped, records)
+    var postEvent = baseEvent
+    do {
+        let records = try await paginate(scoped: scoped, pcfg: pcfg, cfg: cfg)
+        postEvent.duration = Date().timeIntervalSince(start)
+        Middleware.firePost(mws, postEvent)
+        return enrich(scoped, records)
+    } catch {
+        postEvent.duration = Date().timeIntervalSince(start)
+        postEvent.err = Middleware.errString(error)
+        Middleware.firePost(mws, postEvent)
+        throw error
+    }
 }
 
 /// Single-provider live model fetch. URL shapes pinned in plan 025 (Anthropic
@@ -230,15 +241,26 @@ func catalogueRunGet(_ scoped: ScopedModels, _ id: String) async throws -> Model
     }
     let pcfg = providerConfig(scoped.target)
 
+    let mws = scoped.client.defaultMiddleware
     let baseEvent = Event(op: .modelsList, provider: providerNameSlug(scoped.target), model: id)
+    let start = Date()
     do {
-        try Middleware.firePre([], baseEvent)
+        try Middleware.firePre(mws, baseEvent)
     } catch {
-        throw CatalogueError.unavailable("middleware veto: \(error)")
+        throw CatalogueError.unavailable(Middleware.errString(error))
     }
-    let endpointWithID = "\(cfg.endpoint)/\(id)"
-    let body = try await fetchCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: endpointWithID)
-    Middleware.firePost([], baseEvent)
+    var postEvent = baseEvent
+    let body: Data
+    do {
+        body = try await fetchCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: "\(cfg.endpoint)/\(id)")
+        postEvent.duration = Date().timeIntervalSince(start)
+        Middleware.firePost(mws, postEvent)
+    } catch {
+        postEvent.duration = Date().timeIntervalSince(start)
+        postEvent.err = Middleware.errString(error)
+        Middleware.firePost(mws, postEvent)
+        throw error
+    }
     let record = try parseSingleRecord(cfg.parserKind, body)
     return enrich(scoped, [record])[0]
 }
