@@ -316,7 +316,7 @@ public struct Transcription: Sendable {
 ///
 ///
 ///
-public final class TranscriptionJob {
+public final class TranscriptionJob: Sendable {
     ///
     public let handle: TranscriptionHandle
     let apiKey: String
@@ -324,14 +324,28 @@ public final class TranscriptionJob {
     let baseURLOverride: String?
     ///
     ///
-    var interval: TimeInterval = 3
-    var timeout: TimeInterval = 600
+    let interval: TimeInterval
+    let timeout: TimeInterval
 
-    init(handle: TranscriptionHandle, apiKey: String, http: HTTPClient, baseURLOverride: String?) {
+    init(
+        handle: TranscriptionHandle, apiKey: String, http: HTTPClient, baseURLOverride: String?,
+        interval: TimeInterval = 3, timeout: TimeInterval = 600
+    ) {
         self.handle = handle
         self.apiKey = apiKey
         self.http = http
         self.baseURLOverride = baseURLOverride
+        self.interval = interval
+        self.timeout = timeout
+    }
+
+    ///
+    ///
+    func cadence(interval: TimeInterval, timeout: TimeInterval) -> TranscriptionJob {
+        TranscriptionJob(
+            handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
+            interval: interval, timeout: timeout
+        )
     }
 
     ///

@@ -296,21 +296,35 @@ public struct Video: Sendable {
 
 ///
 ///
-public final class VideoJob {
+public final class VideoJob: Sendable {
     ///
     public let handle: VideoHandle
     let apiKey: String
     let http: HTTPClient
     let baseURLOverride: String?
     ///
-    var interval: TimeInterval = 5
-    var timeout: TimeInterval = 600
+    let interval: TimeInterval
+    let timeout: TimeInterval
 
-    init(handle: VideoHandle, apiKey: String, http: HTTPClient, baseURLOverride: String?) {
+    init(
+        handle: VideoHandle, apiKey: String, http: HTTPClient, baseURLOverride: String?,
+        interval: TimeInterval = 5, timeout: TimeInterval = 600
+    ) {
         self.handle = handle
         self.apiKey = apiKey
         self.http = http
         self.baseURLOverride = baseURLOverride
+        self.interval = interval
+        self.timeout = timeout
+    }
+
+    ///
+    ///
+    func cadence(interval: TimeInterval, timeout: TimeInterval) -> VideoJob {
+        VideoJob(
+            handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
+            interval: interval, timeout: timeout
+        )
     }
 
     ///
