@@ -303,21 +303,6 @@ func appendCursor(_ rawURL: String, _ cursorParam: String, _ cursor: String) -> 
     return "\(rawURL)\(sep)\(cursorParam)=\(urlencode(cursor))"
 }
 
-/// Minimal percent-encoder for the cursor-token use case; matches RFC 3986
-/// unreserved characters.
-private func urlencode(_ s: String) -> String {
-    var out = ""
-    for byte in s.utf8 {
-        switch byte {
-        case 0x41...0x5A, 0x61...0x7A, 0x30...0x39, 0x2D, 0x5F, 0x2E, 0x7E:
-            out.unicodeScalars.append(UnicodeScalar(byte))
-        default:
-            out += String(format: "%%%02X", byte)
-        }
-    }
-    return out
-}
-
 private func fetchCatalogueURL(
     scoped: ScopedModels, pcfg: ProviderSpec, endpoint: String,
     cursor: String = "", cursorParam: String = ""

@@ -165,12 +165,14 @@ public struct Music: Sendable {
         case "MusicMinimax":
             url = mgCfg.genEndpoint.hasPrefix("http") ? mgCfg.genEndpoint : base + mgCfg.genEndpoint
             body = buildMinimaxBody(parts, model)
-        default: // MusicGenerateContent (Gemini)
+        case "MusicGenerateContent": // Gemini
             let endpoint = mgCfg.genEndpoint.isEmpty ? config.endpoint : mgCfg.genEndpoint
             url = RequestBuilder.buildURL(
                 config: config, endpoint: endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
             )
             body = buildGeminiBody(parts)
+        default:
+            throw LLMKitError.unsupported("music generation: unknown wire shape \"\(mgCfg.wireShape)\"")
         }
 
         let (statusCode, data) = try await http.postJSON(url: url, body: body, headers: headers)
@@ -178,7 +180,7 @@ public struct Music: Sendable {
             throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
         }
         let raw = try JSONValue.parse(String(decoding: data, as: UTF8.self))
-        var parsed = parseResponse(mgCfg.wireShape, fallbackMime: modelDef.outputMime, raw: raw)
+        var parsed = try parseResponse(mgCfg.wireShape, fallbackMime: modelDef.outputMime, raw: raw)
         if options.raw { parsed.raw = raw }
         return parsed
     }
@@ -237,11 +239,13 @@ public struct Music: Sendable {
 
     // MARK: - Response parsing (selected by wireShape, never provider name)
 
-    private func parseResponse(_ wireShape: String, fallbackMime: String, raw: JSONValue) -> MusicResponse {
+    private func parseResponse(_ wireShape: String, fallbackMime: String, raw: JSONValue) throws -> MusicResponse {
         switch wireShape {
         case "MusicPredict": return parseVertexResponse(raw, fallbackMime)
         case "MusicMinimax": return parseMinimaxResponse(raw, fallbackMime)
-        default: return parseGeminiResponse(raw, fallbackMime)
+        case "MusicGenerateContent": return parseGeminiResponse(raw, fallbackMime)
+        default:
+            throw LLMKitError.unsupported("music generation: unknown wire shape \"\(wireShape)\"")
         }
     }
 
