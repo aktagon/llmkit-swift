@@ -3,6 +3,22 @@ import Foundation
 ///
 ///
 ///
+func urlencode(_ s: String) -> String {
+    var out = ""
+    for byte in s.utf8 {
+        switch byte {
+        case 0x41...0x5A, 0x61...0x7A, 0x30...0x39, 0x2D, 0x5F, 0x2E, 0x7E:
+            out.unicodeScalars.append(UnicodeScalar(byte))
+        default:
+            out += String(format: "%%%02X", byte)
+        }
+    }
+    return out
+}
+
+///
+///
+///
 struct HTTPClient: Sendable {
     let session: URLSession
     ///

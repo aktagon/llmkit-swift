@@ -78,8 +78,10 @@ enum RequestBuilder {
                     .object([("parts", .array([.object([("text", .string(system))])]))])
                 )
             }
+        case "MessageInArray":
+            break // system folds into the messages array (Transforms.applyMessageShape)
         default:
-            break // MessageInArray
+            throw LLMKitError.unsupported("chat request: unknown system placement \"\(config.systemPlacement)\"")
         }
 
         Transforms.applyMessageShape(
@@ -226,8 +228,10 @@ enum RequestBuilder {
             headers.append((config.authHeader, "\(config.authPrefix) \(apiKey)"))
         case "HeaderAPIKey":
             headers.append((config.authHeader, apiKey))
+        case "QueryParamKey", "SigV4":
+            break // key rides in the URL query (buildURL) / the signature (send)
         default:
-            break // QueryParamKey / SigV4
+            break // unknown scheme contributes no header; the keyless request fails at the provider
         }
         if !config.requiredHeader.isEmpty {
             headers.append((config.requiredHeader, config.requiredHeaderValue))
@@ -250,10 +254,10 @@ enum RequestBuilder {
         }
         var resolved = endpoint
             .replacingOccurrences(of: "{model}", with: model)
-            .replacingOccurrences(of: "{apiKey}", with: apiKey)
+            .replacingOccurrences(of: "{apiKey}", with: urlencode(apiKey))
         if config.authScheme == "QueryParamKey" {
             let separator = resolved.contains("?") ? "&" : "?"
-            resolved += "\(separator)\(config.authQueryParam)=\(apiKey)"
+            resolved += "\(separator)\(config.authQueryParam)=\(urlencode(apiKey))"
         }
         return base + resolved
     }
