@@ -122,7 +122,7 @@ public struct Upload: Sendable {
             return file
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = "\(error)"
+            postEvent.err = Middleware.errString(error)
             Middleware.firePost(middleware, postEvent)
             throw error
         }

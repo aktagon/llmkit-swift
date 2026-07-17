@@ -100,7 +100,7 @@ public struct Image: Sendable {
             return response
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = "\(error)"
+            postEvent.err = Middleware.errString(error)
             Middleware.firePost(options.middleware, postEvent)
             throw error
         }

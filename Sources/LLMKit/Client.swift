@@ -81,6 +81,17 @@ public struct Client: Sendable {
         )
     }
 
+    /// Internal seam: append a hook to the client-scoped default middleware
+    /// (the list every capability builder — and the models/catalogue path —
+    /// clones at construction). The public installer is `addTelemetry`; tests
+    /// use this directly to observe client-scoped fire sites.
+    func addMiddleware(_ hook: @escaping MiddlewareFn) -> Client {
+        Client(
+            provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride,
+            http: http, defaultMiddleware: defaultMiddleware + [hook]
+        )
+    }
+
     /// The text-generation builder.
     public var text: Text {
         var builder = Text(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
@@ -321,7 +332,7 @@ public struct Text: Sendable {
             return response
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = "\(error)"
+            postEvent.err = Middleware.errString(error)
             Middleware.firePost(options.middleware, postEvent)
             throw error
         }
@@ -370,7 +381,7 @@ public struct Text: Sendable {
             return job
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = "\(error)"
+            postEvent.err = Middleware.errString(error)
             Middleware.firePost(options.middleware, postEvent)
             throw error
         }
