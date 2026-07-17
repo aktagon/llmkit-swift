@@ -5,7 +5,9 @@ import Foundation
 /// history across turns. Each `prompt` runs the tool loop, calling registered
 /// tools until the model returns a plain-text answer (or `maxToolIterations` is
 /// hit). The request body is built through the shared `RequestBuilder`, so the
-/// agent constructs no wire shape of its own.
+/// agent constructs no wire shape of its own. Not thread-safe: confine one
+/// `Agent` to one task/conversation (not `Sendable` — the compiler enforces
+/// this under strict concurrency).
 public final class Agent {
     private let provider: ProviderName
     private let apiKey: String

@@ -118,8 +118,9 @@ final class TranscriptionTests: XCTestCase {
         let submitBody = try JSONValue.parse(String(decoding: XCTUnwrap(MockURLProtocol.capturedBody), as: UTF8.self))
         XCTAssertEqual(submitBody, .object([("audio_url", .string("https://storage.example.com/meeting-2026-06-24.mp3"))]))
 
-        job.interval = 0.01 // shrink the inter-poll sleep for the test
-        let response = try await job.wait()
+        // Shrink the inter-poll sleep for the test.
+        let fast = job.cadence(interval: 0.01, timeout: 600)
+        let response = try await fast.wait()
         XCTAssertEqual(response.text, "Turn left at the harbor.")
         XCTAssertEqual(response.segments.count, 2)
         XCTAssertEqual(response.segments[0], TranscriptSegment(text: "Turn", start: 120, end: 360, speaker: "A"))
@@ -161,9 +162,9 @@ final class TranscriptionTests: XCTestCase {
         ]
         let job = try await mockClient(.assemblyai).transcription
             .submit([Part.audio(url: "https://storage.example.com/broken.mp3")])
-        job.interval = 0.01
+        let fast = job.cadence(interval: 0.01, timeout: 600)
         do {
-            _ = try await job.wait()
+            _ = try await fast.wait()
             XCTFail("expected a failure error from a failed transcription job")
         } catch let LLMKitError.unsupported(message) {
             XCTAssertTrue(message.contains("audio file could not be decoded"), "got: \(message)")
