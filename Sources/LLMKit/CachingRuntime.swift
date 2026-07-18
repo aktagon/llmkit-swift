@@ -100,7 +100,7 @@ enum CachingRuntime {
         }
 
         let base = baseURLOverride ?? config.baseURL
-        let createURL = "\(base)\(lifecycle.createEndpoint)?\(config.authQueryParam)=\(apiKey)"
+        let createURL = "\(base)\(lifecycle.createEndpoint)?\(config.authQueryParam)=\(urlencode(apiKey))"
         let createBody = JSONValue.object([
             ("model", .string("models/\(model)")),
             ("ttl", .string("\(ttl)s")),
@@ -116,7 +116,6 @@ enum CachingRuntime {
         try Middleware.firePre(options.middleware, baseEvent)
 
         var postEvent = baseEvent
-        postEvent.duration = Date().timeIntervalSince(start)
         let resourceID: String
         do {
             // ADR-052: Google resource caching authenticates via the URL query
@@ -131,10 +130,12 @@ enum CachingRuntime {
             guard !id.isEmpty else { throw LLMKitError.unsupported("cache create: empty resource ID") }
             resourceID = id
         } catch {
-            postEvent.err = "\(error)"
+            postEvent.duration = Date().timeIntervalSince(start)
+            postEvent.err = Middleware.errString(error)
             Middleware.firePost(options.middleware, postEvent)
             throw error
         }
+        postEvent.duration = Date().timeIntervalSince(start)
         Middleware.firePost(options.middleware, postEvent)
 
         JSONObject.set(&root, lifecycle.referenceField, .string(resourceID))

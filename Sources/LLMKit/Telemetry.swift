@@ -72,7 +72,7 @@ enum TelemetryRuntime {
         let input = event.usage?.input ?? 0
         let output = event.usage?.output ?? 0
         let errorType = event.err.map(classifyError) ?? ""
-        let now = String(UInt64(max(0, Date().timeIntervalSince1970)) * 1_000_000_000)
+        let now = String(UInt64(max(0, Date().timeIntervalSince1970 * 1_000_000_000)))
         return buildOTLPTraces(
             operationName: op, provider: event.provider, model: event.model,
             inputTokens: input, outputTokens: output, errorType: errorType,
@@ -142,12 +142,16 @@ enum TelemetryRuntime {
 
     /// Maps a lossy `Event.err` message to a stable OTEL `error.type`. The typed
     /// error is erased at the middleware seam (`Event.err: String?`), so
-    /// classification keys off the error-string prefixes. Best-effort — no wire
-    /// golden asserts it (the rejection golden passes `error.type` directly).
+    /// classification keys off the canonical `Middleware.errString` prefixes
+    /// (Swift renders `transport:`/`decoding:` where Rust's `Display` renders
+    /// `http:`/`json:`; the output vocabulary is identical across SDKs).
+    /// Best-effort — no wire golden asserts it (the rejection golden passes
+    /// `error.type` directly). `.api` renders "{provider}: {message} ({status})"
+    /// and lands in the `api_error` fallback.
     static func classifyError(_ err: String) -> String {
         if err.isEmpty { return "" }
         if err.hasPrefix("validation:") { return "validation_error" }
-        if err.hasPrefix("http:") || err.hasPrefix("json:")
+        if err.hasPrefix("transport:") || err.hasPrefix("decoding:")
             || err.hasPrefix("unsupported:") || err.hasPrefix("middleware veto:") {
             return "error"
         }

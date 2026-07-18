@@ -81,6 +81,17 @@ public struct Client: Sendable {
         )
     }
 
+    /// Internal seam: append a hook to the client-scoped default middleware
+    /// (the list every capability builder — and the models/catalogue path —
+    /// clones at construction). The public installer is `addTelemetry`; tests
+    /// use this directly to observe client-scoped fire sites.
+    func addMiddleware(_ hook: @escaping MiddlewareFn) -> Client {
+        Client(
+            provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride,
+            http: http, defaultMiddleware: defaultMiddleware + [hook]
+        )
+    }
+
     /// The text-generation builder.
     public var text: Text {
         var builder = Text(provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride, http: http)
@@ -321,7 +332,7 @@ public struct Text: Sendable {
             return response
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = "\(error)"
+            postEvent.err = Middleware.errString(error)
             Middleware.firePost(options.middleware, postEvent)
             throw error
         }
@@ -330,8 +341,11 @@ public struct Text: Sendable {
     /// Stream a single-turn prompt, invoking `onDelta` per text chunk, and return
     /// the assembled response (ADR-064: stream is a text execution mode).
     @discardableResult
-    public func stream(_ userPrompt: String, _ onDelta: (String) -> Void) async throws -> Response {
+    public func stream(_ userPrompt: String, _ onDelta: @Sendable (String) -> Void) async throws -> Response {
         let config = providerConfig(provider)
+        guard options.proto.isEmpty else {
+            throw LLMKitError.validation(field: "protocol", message: "stream supports only the default chat protocol")
+        }
         let model = try RequestBuilder.resolveModel(config, modelOverride)
         return try await Streamer.run(
             config: config, apiKey: apiKey, model: model, system: systemPrompt,
@@ -367,7 +381,7 @@ public struct Text: Sendable {
             return job
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = "\(error)"
+            postEvent.err = Middleware.errString(error)
             Middleware.firePost(options.middleware, postEvent)
             throw error
         }

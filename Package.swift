@@ -13,7 +13,8 @@ let package = Package(
     targets: [
         .target(
             name: "LLMKit",
-            path: "Sources/LLMKit"
+            path: "Sources/LLMKit",
+            swiftSettings: [.enableExperimentalFeature("StrictConcurrency")]
         ),
         .testTarget(
             name: "LLMKitTests",
