@@ -4,8 +4,9 @@ import XCTest
 /// Behavior tests for the client-scoped telemetry seam (Phase 4g): addTelemetry
 /// installs a post-phase export hook on every capability builder, so a prompt
 /// emits one OTLP span carrying the call's operation/provider/model/usage. The
-/// wire goldens assert the pure builder; these assert the middleware wiring +
-/// the fail-open + error classification the goldens never exercise.
+/// wire goldens assert the pure builder (including the ADR-071 typed-error
+/// path); these assert the middleware wiring, the fail-open, and the full
+/// structural classification table.
 final class TelemetryTests: XCTestCase {
     /// Synchronous recorder for the OTLP payloads the export hook emits.
     private final class Recorder: @unchecked Sendable {
@@ -84,34 +85,45 @@ final class TelemetryTests: XCTestCase {
         )
     }
 
-    /// Round-trip: classification is asserted on the exact strings the runtime
-    /// renders via `Middleware.errString` for REAL thrown errors — never on
-    /// hand-written strings the runtime does not produce.
-    func testErrStringClassificationRoundTrip() {
+    /// The structural classification contract (ADR-071): api -> api_error,
+    /// validation -> validation_error, everything else (transport, decoding,
+    /// unsupported, veto, unknown) -> error. Asserted on TYPED errors — the
+    /// message strings the seam renders alongside stay pinned too, since
+    /// consumers read them (never telemetry, which reads errType).
+    func testErrTypeStructuralClassification() {
+        let api = LLMKitError.api(provider: "openai", statusCode: 429, message: "rate limited")
+        XCTAssertEqual(Middleware.errString(api), "openai: rate limited (429)")
+        XCTAssertEqual(Middleware.errType(api), "api_error")
+
         let validation = LLMKitError.validation(field: "model", message: "no model configured for openai")
         XCTAssertEqual(Middleware.errString(validation), "validation: model - no model configured for openai")
-        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(validation)), "validation_error")
+        XCTAssertEqual(Middleware.errType(validation), "validation_error")
+
+        let transport = LLMKitError.transport("connection reset by peer")
+        XCTAssertEqual(Middleware.errType(transport), "error")
+
+        let decoding = LLMKitError.decoding("response carried no choices")
+        XCTAssertEqual(Middleware.errType(decoding), "error")
 
         let unsupported = LLMKitError.unsupported("batch create: empty batch ID")
         XCTAssertEqual(Middleware.errString(unsupported), "unsupported: batch create: empty batch ID")
-        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(unsupported)), "error")
-
-        let transport = LLMKitError.transport("connection reset by peer")
-        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(transport)), "error")
-
-        let decoding = LLMKitError.decoding("response carried no choices")
-        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(decoding)), "error")
+        XCTAssertEqual(Middleware.errType(unsupported), "error")
 
         struct RateLimitPolicy: Error {}
         let veto = MiddlewareVeto(cause: RateLimitPolicy())
         XCTAssertTrue(Middleware.errString(veto).hasPrefix("middleware veto: "))
-        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(veto)), "error")
+        XCTAssertEqual(Middleware.errType(veto), "error")
+    }
 
-        let api = LLMKitError.api(provider: "openai", statusCode: 429, message: "rate limited")
-        XCTAssertEqual(Middleware.errString(api), "openai: rate limited (429)")
-        XCTAssertEqual(TelemetryRuntime.classifyError(Middleware.errString(api)), "api_error")
-
-        XCTAssertEqual(TelemetryRuntime.classifyError(""), "")
+    /// `setError` is the one erasure seam (ADR-071 ETY-003): it stamps err and
+    /// errType together from the same typed error.
+    func testSetErrorStampsErrAndErrTypeTogether() {
+        var event = Event(op: .llmRequest, provider: "openai", model: "gpt-4o", phase: .post)
+        Middleware.setError(
+            &event, LLMKitError.validation(field: "caching", message: "not supported by grok")
+        )
+        XCTAssertEqual(event.err, "validation: caching - not supported by grok")
+        XCTAssertEqual(event.errType, "validation_error")
     }
 
     /// End-to-end: a real validation rejection inside the llmRequest fire scope

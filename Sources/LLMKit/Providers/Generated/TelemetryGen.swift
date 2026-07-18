@@ -14,7 +14,7 @@ enum TelemetryConst {
     static let otelAttrOp = "gen_ai.operation.name"  // Event.op
     static let otelAttrProvider = "gen_ai.system"  // Event.provider
     static let otelAttrModel = "gen_ai.request.model"  // Event.model
-    static let otelAttrErr = "error.type"  // Event.err
+    static let otelAttrErrType = "error.type"  // Event.errType
 
     // OTEL GenAI usage attribute keys (llm:otelUsageAttribute).
     static let otelUsageInput = "gen_ai.usage.input_tokens"

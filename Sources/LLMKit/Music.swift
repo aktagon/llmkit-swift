@@ -95,7 +95,7 @@ public struct Music: Sendable {
             return response
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = Middleware.errString(error)
+            Middleware.setError(&postEvent, error)
             Middleware.firePost(options.middleware, postEvent)
             throw error
         }
