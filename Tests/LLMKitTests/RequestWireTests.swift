@@ -357,7 +357,12 @@ final class RequestWireTests: XCTestCase {
     // the flat-JSON OpenAI body.
 
     func testSpeechInworld() async throws {
-        _ = try await client(.inworld).speech
+        let c = client(.inworld)
+        // The base64Envelope parser rejects a bodyless 2xx since HANDOFF-036 A5,
+        // so this driver (like the other SDKs' wire drivers) feeds a valid
+        // envelope; the assertion is on the captured request bytes.
+        MockURLProtocol.responseBody = Data("{\"audioContent\":\"UklGRg==\"}".utf8)
+        _ = try await c.speech
             .model("inworld-tts-2").voice("Dennis")
             .generate("Hello from llmkit.")
         try assertGolden("speech-inworld", try capturedBody())

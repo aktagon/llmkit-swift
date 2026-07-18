@@ -81,7 +81,12 @@ public struct Speech: Sendable {
         guard (200..<300).contains(statusCode) else {
             throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
         }
-        return parseResponse(encoding: sgCfg.audioResponseEncoding, fallbackMime: modelDef.outputMime, body: data)
+        return try parseResponse(
+            provider: config.slug,
+            encoding: sgCfg.audioResponseEncoding,
+            fallbackMime: modelDef.outputMime,
+            body: data
+        )
     }
 
     /// Clone-on-chain helper: copy, mutate, return.
@@ -125,14 +130,28 @@ public struct Speech: Sendable {
     /// Decode the synthesized audio per the wire shape's audio response encoding
     /// (ADR-051 OAA-002). `rawBody` (OpenAI) takes the response body verbatim as
     /// the audio bytes; `base64Envelope` (Inworld) parses a JSON envelope and
-    /// base64-decodes the `audioContent` field.
-    private func parseResponse(encoding: String, fallbackMime: String, body: Data) -> SpeechResponse {
+    /// base64-decodes the `audioContent` field. A 2xx body that does not parse
+    /// to audio is a decoding error (HANDOFF-036 A5) — never a silent empty
+    /// clip.
+    private func parseResponse(
+        provider: String, encoding: String, fallbackMime: String, body: Data
+    ) throws -> SpeechResponse {
         var bytes: [UInt8] = []
         if encoding == "rawBody" {
             bytes = [UInt8](body)
-        } else if let raw = try? JSONValue.parse(String(decoding: body, as: UTF8.self)),
-                  case let .string(b64)? = raw.member("audioContent"), !b64.isEmpty,
-                  let decoded = Data(base64Encoded: b64) {
+        } else {
+            let raw: JSONValue
+            do {
+                raw = try JSONValue.parse(String(decoding: body, as: UTF8.self))
+            } catch {
+                throw LLMKitError.decoding("\(provider) speech response: not valid JSON: \(error)")
+            }
+            guard case let .string(b64)? = raw.member("audioContent"), !b64.isEmpty else {
+                throw LLMKitError.decoding("\(provider) speech response: missing or empty audioContent")
+            }
+            guard let decoded = Data(base64Encoded: b64) else {
+                throw LLMKitError.decoding("\(provider) speech response: invalid base64 in audioContent")
+            }
             bytes = [UInt8](decoded)
         }
         return SpeechResponse(
