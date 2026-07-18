@@ -166,6 +166,17 @@ struct HTTPClient: Sendable {
     ///
     ///
     ///
+    private func escapeQuotes(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+    }
+
+    ///
+    ///
+    ///
+    ///
     ///
     ///
     ///
@@ -183,11 +194,11 @@ struct HTTPClient: Sendable {
         func append(_ string: String) { payload.append(Data(string.utf8)) }
         for (name, value) in fields {
             append("--\(boundary)\r\n")
-            append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+            append("Content-Disposition: form-data; name=\"\(escapeQuotes(name))\"\r\n\r\n")
             append("\(value)\r\n")
         }
         append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"\(file.field)\"; filename=\"\(file.filename)\"\r\n")
+        append("Content-Disposition: form-data; name=\"\(escapeQuotes(file.field))\"; filename=\"\(escapeQuotes(file.filename))\"\r\n")
         append("Content-Type: \(file.contentType)\r\n\r\n")
         payload.append(file.data)
         append("\r\n--\(boundary)--\r\n")
