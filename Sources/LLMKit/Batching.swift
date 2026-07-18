@@ -291,25 +291,33 @@ struct BatchAdapter: JobAdapter {
         } else {
             throw LLMKitError.unsupported("batch result endpoint not configured for \(spec.slug)")
         }
-        return try parseResults(responseBody)
+        return parseResults(responseBody)
     }
 
-    private func parseResults(_ data: String) throws -> [Response] {
+    private func parseResults(_ data: String) -> [Response] {
         var responses: [Response] = []
         for rawLine in data.split(separator: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.isEmpty { continue }
+            // A malformed or errored item line (e.g. Anthropic
+            // result.type=errored, which carries no result.message at the
+            // configured body path; an OpenAI line whose response is null)
+            // must not destroy the completed batch: skip it and return the
+            // successful subset, mirroring Go.
             let responseText: String
             if batch.resultBodyPath.isEmpty {
                 responseText = line
             } else {
-                let parsed = try JSONValue.parse(line)
-                guard let inner = navigate(parsed, batch.resultBodyPath) else {
-                    throw LLMKitError.unsupported("batch result wrapper missing body path")
+                guard let parsed = try? JSONValue.parse(line),
+                      let inner = navigate(parsed, batch.resultBodyPath) else {
+                    continue
                 }
                 responseText = inner.serialized()
             }
-            responses.append(try ResponseParser.parse(config: spec, body: Data(responseText.utf8)))
+            guard let response = try? ResponseParser.parse(config: spec, body: Data(responseText.utf8)) else {
+                continue
+            }
+            responses.append(response)
         }
         return responses
     }
