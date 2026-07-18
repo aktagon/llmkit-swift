@@ -6,7 +6,20 @@ import CryptoKit
 ///
 ///
 ///
+///
+///
 enum SigV4 {
+    ///
+    ///
+    struct Parts {
+        let headers: [(String, String)]
+        let canonicalRequest: String
+        let stringToSign: String
+        let authorization: String
+    }
+
+    ///
+    ///
     ///
     ///
     static func sign(
@@ -18,9 +31,30 @@ enum SigV4 {
         sessionToken: String,
         region: String,
         service: String,
-        contentType: String
+        contentType: String,
+        now: Date = Date()
     ) -> [(String, String)] {
-        let now = Date()
+        signParts(
+            method: method, url: url, body: body,
+            accessKey: accessKey, secretKey: secretKey, sessionToken: sessionToken,
+            region: region, service: service, contentType: contentType, now: now
+        ).headers
+    }
+
+    ///
+    ///
+    static func signParts(
+        method: String,
+        url: URL,
+        body: Data,
+        accessKey: String,
+        secretKey: String,
+        sessionToken: String,
+        region: String,
+        service: String,
+        contentType: String,
+        now: Date
+    ) -> Parts {
         var utc = Calendar(identifier: .gregorian)
         utc.timeZone = TimeZone(identifier: "UTC")!
         let comps = utc.dateComponents([.year, .month, .day, .hour, .minute, .second], from: now)
@@ -33,12 +67,15 @@ enum SigV4 {
         let payloadHash = sha256Hex(body)
 
         //
+        //
         var signed: [(String, String)] = [
-            ("content-type", contentType),
             ("host", host),
             ("x-amz-content-sha256", payloadHash),
             ("x-amz-date", amzdate),
         ]
+        if !contentType.isEmpty {
+            signed.append(("content-type", contentType))
+        }
         if !sessionToken.isEmpty {
             signed.append(("x-amz-security-token", sessionToken))
         }
@@ -85,7 +122,12 @@ enum SigV4 {
         if !sessionToken.isEmpty {
             headers.append(("X-Amz-Security-Token", sessionToken))
         }
-        return headers
+        return Parts(
+            headers: headers,
+            canonicalRequest: canonicalRequest,
+            stringToSign: stringToSign,
+            authorization: authorization
+        )
     }
 
     private static func canonicalQueryString(_ url: URL) -> String {

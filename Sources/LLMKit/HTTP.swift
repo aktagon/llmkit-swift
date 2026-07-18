@@ -116,6 +116,9 @@ struct HTTPClient: Sendable {
     ///
     ///
     ///
+    ///
+    ///
+    ///
     func getTextSigV4(
         url: String,
         accessKey: String,
@@ -132,7 +135,7 @@ struct HTTPClient: Sendable {
         let signed = SigV4.sign(
             method: "GET", url: endpoint, body: Data(),
             accessKey: accessKey, secretKey: secretKey, sessionToken: sessionToken,
-            region: region, service: service, contentType: "application/json"
+            region: region, service: service, contentType: ""
         )
         for (name, value) in signed { request.setValue(value, forHTTPHeaderField: name) }
         applyCustomHeaders(&request)
