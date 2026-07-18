@@ -75,17 +75,26 @@ enum TelemetryRuntime {
     ///
     ///
     ///
-    static func buildPayload(_ event: Event) -> String {
+    ///
+    ///
+    static func buildPayloadAt(
+        _ event: Event, traceId: String, spanId: String, startNano: String, endNano: String
+    ) -> String {
         let op = TelemetryConst.operationName(event.op) ?? "\(event.op)"
         let input = event.usage?.input ?? 0
         let output = event.usage?.output ?? 0
-        let errorType = event.err.map(classifyError) ?? ""
-        let now = String(UInt64(max(0, Date().timeIntervalSince1970 * 1_000_000_000)))
         return buildOTLPTraces(
             operationName: op, provider: event.provider, model: event.model,
-            inputTokens: input, outputTokens: output, errorType: errorType,
-            traceId: randHex(16), spanId: randHex(8), startNano: now, endNano: now
+            inputTokens: input, outputTokens: output, errorType: event.errType ?? "",
+            traceId: traceId, spanId: spanId, startNano: startNano, endNano: endNano
         )
+    }
+
+    ///
+    ///
+    static func buildPayload(_ event: Event) -> String {
+        let now = String(UInt64(max(0, Date().timeIntervalSince1970 * 1_000_000_000)))
+        return buildPayloadAt(event, traceId: randHex(16), spanId: randHex(8), startNano: now, endNano: now)
     }
 
     ///
@@ -109,7 +118,7 @@ enum TelemetryRuntime {
         ]
         if inputTokens > 0 { attributes.append(intAttr(TelemetryConst.otelUsageInput, inputTokens)) }
         if outputTokens > 0 { attributes.append(intAttr(TelemetryConst.otelUsageOutput, outputTokens)) }
-        if !errorType.isEmpty { attributes.append(stringAttr(TelemetryConst.otelAttrErr, errorType)) }
+        if !errorType.isEmpty { attributes.append(stringAttr(TelemetryConst.otelAttrErrType, errorType)) }
 
         var span: [(String, JSONValue)] = [
             ("traceId", .string(traceId)),
@@ -146,24 +155,6 @@ enum TelemetryRuntime {
     ///
     private static func intAttr(_ key: String, _ value: Int) -> JSONValue {
         .object([("key", .string(key)), ("value", .object([("intValue", .string(String(value)))]))])
-    }
-
-    ///
-    ///
-    ///
-    ///
-    ///
-    ///
-    ///
-    ///
-    static func classifyError(_ err: String) -> String {
-        if err.isEmpty { return "" }
-        if err.hasPrefix("validation:") { return "validation_error" }
-        if err.hasPrefix("transport:") || err.hasPrefix("decoding:")
-            || err.hasPrefix("unsupported:") || err.hasPrefix("middleware veto:") {
-            return "error"
-        }
-        return "api_error"
     }
 
     ///

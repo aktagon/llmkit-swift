@@ -332,7 +332,7 @@ public struct Text: Sendable {
             return response
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = Middleware.errString(error)
+            Middleware.setError(&postEvent, error)
             Middleware.firePost(options.middleware, postEvent)
             throw error
         }
@@ -381,7 +381,7 @@ public struct Text: Sendable {
             return job
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = Middleware.errString(error)
+            Middleware.setError(&postEvent, error)
             Middleware.firePost(options.middleware, postEvent)
             throw error
         }

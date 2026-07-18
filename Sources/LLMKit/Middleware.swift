@@ -26,7 +26,12 @@ public struct Event: Sendable {
     ///
     public var usage: Usage?
     ///
+    ///
     public var err: String?
+    ///
+    ///
+    ///
+    public var errType: String?
     ///
     public var duration: TimeInterval?
 
@@ -40,6 +45,7 @@ public struct Event: Sendable {
         result: String = "",
         usage: Usage? = nil,
         err: String? = nil,
+        errType: String? = nil,
         duration: TimeInterval? = nil
     ) {
         self.op = op
@@ -51,6 +57,7 @@ public struct Event: Sendable {
         self.result = result
         self.usage = usage
         self.err = err
+        self.errType = errType
         self.duration = duration
     }
 }
@@ -94,12 +101,12 @@ enum Middleware {
     ///
     ///
     ///
+    ///
     static func errString(_ error: any Error) -> String {
         if let veto = error as? MiddlewareVeto {
             return "middleware veto: \(errString(veto.cause))"
         }
         if let known = error as? LLMKitError {
-            //
             //
             //
             if case let .unsupported(message) = known {
@@ -111,5 +118,31 @@ enum Middleware {
             return description
         }
         return "\(error)"
+    }
+
+    ///
+    ///
+    ///
+    ///
+    ///
+    static func errType(_ error: any Error) -> String {
+        if error is MiddlewareVeto { return "error" }
+        if let known = error as? LLMKitError {
+            switch known {
+            case .api: return "api_error"
+            case .validation: return "validation_error"
+            case .transport, .decoding, .unsupported, .pollTimeout: return "error"
+            }
+        }
+        return "error"
+    }
+
+    ///
+    ///
+    ///
+    ///
+    static func setError(_ event: inout Event, _ error: any Error) {
+        event.err = errString(error)
+        event.errType = errType(error)
     }
 }
