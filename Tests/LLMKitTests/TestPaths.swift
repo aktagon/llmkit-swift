@@ -81,6 +81,18 @@ enum TestPaths {
         try Data(projection.serialized().utf8).write(to: file)
     }
 
+    /// Write a SigV4-wire artifact to `target/wire/sigv4/<fixture>/swift.json`
+    /// (the `{canonicalRequest, stringToSign, authorization}` projection),
+    /// mirroring the Go driver's `go.json` output (CR-002).
+    static func writeSigV4Artifact(fixture: String, projection: JSONValue) throws {
+        let directory = repoRoot()
+            .appendingPathComponent("target/wire/sigv4")
+            .appendingPathComponent(fixture)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("swift.json")
+        try Data(projection.serialized().utf8).write(to: file)
+    }
+
     /// Write a lifecycle-wire artifact to
     /// `target/wire/lifecycle/<fixture>/swift.json` (the normalized JobStatus
     /// projection), mirroring the Rust driver's `rust.json` output.
