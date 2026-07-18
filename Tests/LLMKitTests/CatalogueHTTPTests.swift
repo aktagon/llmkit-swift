@@ -65,6 +65,25 @@ final class CatalogueHTTPTests: XCTestCase {
         XCTAssertEqual(MockURLProtocol.capturedHeaders["authorization"], "Bearer test-key")
     }
 
+    /// HANDOFF-036 A4: withCapability composes with provider(p).list() — the
+    /// scoped live list returns only models whose ontology-derived
+    /// capabilities contain the filter.
+    func testScopedListAppliesCapabilityFilter() async throws {
+        let body = #"{"object":"list","data":[{"id":"gpt-4o-mini","object":"model","created":1715367049,"owned_by":"system"},{"id":"gpt-image-1","object":"model","created":1715367049,"owned_by":"system"}]}"#
+        MockURLProtocol.responseBody = Data(body.utf8)
+
+        let unfiltered = try await client(.openai).models.provider(.openai).list()
+        XCTAssertEqual(unfiltered.map(\.id), ["gpt-4o-mini", "gpt-image-1"])
+
+        MockURLProtocol.reset()
+        MockURLProtocol.responseBody = Data(body.utf8)
+        let filtered = try await client(.openai).models
+            .withCapability(.imageGeneration)
+            .provider(.openai)
+            .list()
+        XCTAssertEqual(filtered.map(\.id), ["gpt-image-1"])
+    }
+
     func testScopedList403ScopeMapsToScopeSentinel() async {
         MockURLProtocol.responseStatusCode = 403
         MockURLProtocol.responseBody = Data(#"{"error":{"message":"Missing scopes: api.model.read"}}"#.utf8)
