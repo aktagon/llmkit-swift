@@ -36,8 +36,16 @@ public struct Telemetry: Sendable {
     /// with the given headers, fail-open. Unlike the Rust twin (a synchronous
     /// std::net POST on the request path), the Swift transport is URLSession, so
     /// the POST is dispatched fire-and-forget — the request path never blocks on
-    /// the collector, and every transport error is swallowed.
-    public static func httpExport(endpoint: String, headers: [String: String] = [:]) -> TelemetryExport {
+    /// the collector, every transport error is swallowed, and spans still in
+    /// flight when the process exits may be dropped (a short-lived CLI should
+    /// expect best-effort delivery; a flush/drain hook is deliberately deferred
+    /// until a real consumer needs one, HANDOFF-036 B4). `session` defaults to
+    /// `.shared` and exists so tests — or a caller with its own URLSession
+    /// configuration — can inject the transport, mirroring the `Client`
+    /// initializer's session seam.
+    public static func httpExport(
+        endpoint: String, headers: [String: String] = [:], session: URLSession = .shared
+    ) -> TelemetryExport {
         let base = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
         let url = base + TelemetryConst.tracesPath
         return { payload in
@@ -47,7 +55,7 @@ public struct Telemetry: Sendable {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
             request.httpBody = payload
-            URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
+            session.dataTask(with: request) { _, _, _ in }.resume()
         }
     }
 }
