@@ -139,13 +139,17 @@ public struct Providers: Sendable {
 
 ///
 ///
+///
+///
+///
+func applyCapFilter(_ models: [ModelInfo], _ capFilter: Capability?) -> [ModelInfo] {
+    guard let cap = capFilter else { return models }
+    return models.filter { $0.capabilities.contains(cap) }
+}
+
+///
 func catalogueFilter(_ capFilter: Capability?) -> [ModelInfo] {
-    compiledInModels
-        .filter { model in
-            guard let cap = capFilter else { return true }
-            return model.capabilities.contains(cap)
-        }
-        .map(compiledToModelInfo)
+    applyCapFilter(compiledInModels.map(compiledToModelInfo), capFilter)
 }
 
 ///
@@ -189,9 +193,8 @@ func catalogueRunLive(_ models: Models) async -> LiveResult {
             errors[providerNameSlug(info.id)] = ProviderError(kind: "unavailable", message: "\(error)")
         }
     }
-    if let cap = models.capFilter {
-        all = all.filter { $0.capabilities.contains(cap) }
-    }
+    //
+    //
     all.sort { a, b in
         let pa = providerNameSlug(a.provider)
         let pb = providerNameSlug(b.provider)
@@ -201,6 +204,8 @@ func catalogueRunLive(_ models: Models) async -> LiveResult {
     return LiveResult(models: all, errors: errors)
 }
 
+///
+///
 ///
 ///
 ///
@@ -222,7 +227,7 @@ func catalogueRunList(_ scoped: ScopedModels) async throws -> [ModelInfo] {
         let records = try await paginate(scoped: scoped, pcfg: pcfg, cfg: cfg)
         postEvent.duration = Date().timeIntervalSince(start)
         Middleware.firePost(mws, postEvent)
-        return enrich(scoped, records)
+        return applyCapFilter(enrich(scoped, records), scoped.capFilter)
     } catch {
         postEvent.duration = Date().timeIntervalSince(start)
         postEvent.err = Middleware.errString(error)
