@@ -55,6 +55,35 @@ final class TelemetryTests: XCTestCase {
         XCTAssertEqual(response.text, "Helsinki")
     }
 
+    /// The batteries exporter POSTs through the injected session (HANDOFF-036
+    /// B4) — previously the one HTTP call in the SDK a test transport could not
+    /// intercept. Asserts URL assembly (`/v1/traces` suffix), the caller's
+    /// headers, and the payload arriving verbatim. Fire-and-forget, so the
+    /// capture is polled rather than awaited.
+    func testHTTPExportPostsThroughInjectedSession() async throws {
+        MockURLProtocol.reset()
+        MockURLProtocol.responseStatusCode = 200
+
+        let export = Telemetry.httpExport(
+            endpoint: "https://collector.example.com",
+            headers: ["Authorization": "Bearer otlp-token"],
+            session: MockURLProtocol.makeSession()
+        )
+        let payload = "{\"resourceSpans\":[]}"
+        export(Data(payload.utf8))
+
+        for _ in 0..<200 where MockURLProtocol.capturedBody == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(MockURLProtocol.capturedURLs.first, "https://collector.example.com/v1/traces")
+        XCTAssertEqual(MockURLProtocol.capturedHeaders["authorization"], "Bearer otlp-token")
+        XCTAssertEqual(MockURLProtocol.capturedHeaders["content-type"], "application/json")
+        XCTAssertEqual(
+            MockURLProtocol.capturedBody.map { String(decoding: $0, as: UTF8.self) },
+            payload
+        )
+    }
+
     /// Round-trip: classification is asserted on the exact strings the runtime
     /// renders via `Middleware.errString` for REAL thrown errors — never on
     /// hand-written strings the runtime does not produce.
