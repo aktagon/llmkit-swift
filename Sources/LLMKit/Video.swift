@@ -97,7 +97,7 @@ public struct Video: Sendable {
             return VideoJob(handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride)
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = Middleware.errString(error)
+            Middleware.setError(&postEvent, error)
             Middleware.firePost(middleware, postEvent)
             throw error
         }

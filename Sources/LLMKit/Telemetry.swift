@@ -72,20 +72,29 @@ enum TelemetryRuntime {
         }
     }
 
-    /// Classifies the post-phase `Event` and renders it to OTLP traces JSON. Span
-    /// identity + timing are stamped here (the pure builder takes them as
-    /// arguments so the parity goldens can inject fixed values).
-    static func buildPayload(_ event: Event) -> String {
+    /// The PURE event-level payload builder: span identity + timing are
+    /// injected so the parity goldens can drive a real post-phase `Event` with
+    /// fixed values. It reads `event.errType` verbatim — the kind was stamped
+    /// at the fire-site erasure seam (`Middleware.setError`), where the typed
+    /// error still exists (ADR-071); no classification happens here.
+    static func buildPayloadAt(
+        _ event: Event, traceId: String, spanId: String, startNano: String, endNano: String
+    ) -> String {
         let op = TelemetryConst.operationName(event.op) ?? "\(event.op)"
         let input = event.usage?.input ?? 0
         let output = event.usage?.output ?? 0
-        let errorType = event.err.map(classifyError) ?? ""
-        let now = String(UInt64(max(0, Date().timeIntervalSince1970 * 1_000_000_000)))
         return buildOTLPTraces(
             operationName: op, provider: event.provider, model: event.model,
-            inputTokens: input, outputTokens: output, errorType: errorType,
-            traceId: randHex(16), spanId: randHex(8), startNano: now, endNano: now
+            inputTokens: input, outputTokens: output, errorType: event.errType ?? "",
+            traceId: traceId, spanId: spanId, startNano: startNano, endNano: endNano
         )
+    }
+
+    /// The production wrapper: fresh span identity + the wall clock around the
+    /// pure builder.
+    static func buildPayload(_ event: Event) -> String {
+        let now = String(UInt64(max(0, Date().timeIntervalSince1970 * 1_000_000_000)))
+        return buildPayloadAt(event, traceId: randHex(16), spanId: randHex(8), startNano: now, endNano: now)
     }
 
     /// The PURE, deterministic OTLP-payload builder (OTLP/HTTP, proto3-JSON).
@@ -109,7 +118,7 @@ enum TelemetryRuntime {
         ]
         if inputTokens > 0 { attributes.append(intAttr(TelemetryConst.otelUsageInput, inputTokens)) }
         if outputTokens > 0 { attributes.append(intAttr(TelemetryConst.otelUsageOutput, outputTokens)) }
-        if !errorType.isEmpty { attributes.append(stringAttr(TelemetryConst.otelAttrErr, errorType)) }
+        if !errorType.isEmpty { attributes.append(stringAttr(TelemetryConst.otelAttrErrType, errorType)) }
 
         var span: [(String, JSONValue)] = [
             ("traceId", .string(traceId)),
@@ -146,24 +155,6 @@ enum TelemetryRuntime {
     /// int64 attributes render as a *string* intValue per the OTLP/JSON spec.
     private static func intAttr(_ key: String, _ value: Int) -> JSONValue {
         .object([("key", .string(key)), ("value", .object([("intValue", .string(String(value)))]))])
-    }
-
-    /// Maps a lossy `Event.err` message to a stable OTEL `error.type`. The typed
-    /// error is erased at the middleware seam (`Event.err: String?`), so
-    /// classification keys off the canonical `Middleware.errString` prefixes
-    /// (Swift renders `transport:`/`decoding:` where Rust's `Display` renders
-    /// `http:`/`json:`; the output vocabulary is identical across SDKs).
-    /// Best-effort — no wire golden asserts it (the rejection golden passes
-    /// `error.type` directly). `.api` renders "{provider}: {message} ({status})"
-    /// and lands in the `api_error` fallback.
-    static func classifyError(_ err: String) -> String {
-        if err.isEmpty { return "" }
-        if err.hasPrefix("validation:") { return "validation_error" }
-        if err.hasPrefix("transport:") || err.hasPrefix("decoding:")
-            || err.hasPrefix("unsupported:") || err.hasPrefix("middleware veto:") {
-            return "error"
-        }
-        return "api_error"
     }
 
     /// A non-crypto hex string of `nBytes` bytes for span/trace identity. Ids are
