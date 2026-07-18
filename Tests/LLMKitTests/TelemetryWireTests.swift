@@ -38,4 +38,22 @@ final class TelemetryWireTests: XCTestCase {
         )
         try assertGolden("telemetry-rejection", payload)
     }
+
+    /// Exercises classification end-to-end (ADR-071 ETY-004): the SDK's typed
+    /// API error routes through the REAL erasure seam (`Middleware.setError`),
+    /// and the stamped event renders to the shared telemetry-error golden via
+    /// the pure event-level builder — no error.type is hand-fed anywhere.
+    func testTelemetryError() throws {
+        var event = Event(op: .llmRequest, provider: "openai", model: "gpt-4o", phase: .post)
+        Middleware.setError(
+            &event, LLMKitError.api(provider: "openai", statusCode: 429, message: "rate limited")
+        )
+        XCTAssertEqual(event.errType, "api_error", "setError must stamp errType from the typed error")
+        let payload = TelemetryRuntime.buildPayloadAt(
+            event,
+            traceId: "5b8efff798038103d269b633813fc60c", spanId: "eee19b7ec3c1b174",
+            startNano: "1700000000000000000", endNano: "1700000001000000000"
+        )
+        try assertGolden("telemetry-error", payload)
+    }
 }

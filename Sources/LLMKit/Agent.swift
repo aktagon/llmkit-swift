@@ -102,7 +102,7 @@ public final class Agent {
                 parsed = try ResponseParser.parse(config: config, body: data)
             } catch {
                 llmPost.duration = Date().timeIntervalSince(llmStart)
-                llmPost.err = Middleware.errString(error)
+                Middleware.setError(&llmPost, error)
                 Middleware.firePost(options.middleware, llmPost)
                 throw error
             }

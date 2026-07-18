@@ -230,7 +230,7 @@ func catalogueRunList(_ scoped: ScopedModels) async throws -> [ModelInfo] {
         return applyCapFilter(enrich(scoped, records), scoped.capFilter)
     } catch {
         postEvent.duration = Date().timeIntervalSince(start)
-        postEvent.err = Middleware.errString(error)
+        Middleware.setError(&postEvent, error)
         Middleware.firePost(mws, postEvent)
         throw error
     }
@@ -262,7 +262,7 @@ func catalogueRunGet(_ scoped: ScopedModels, _ id: String) async throws -> Model
         Middleware.firePost(mws, postEvent)
     } catch {
         postEvent.duration = Date().timeIntervalSince(start)
-        postEvent.err = Middleware.errString(error)
+        Middleware.setError(&postEvent, error)
         Middleware.firePost(mws, postEvent)
         throw error
     }
