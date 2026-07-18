@@ -47,6 +47,8 @@ enum RequestBuilder {
         tools: [Tool],
         options: PromptOptions
     ) throws -> (body: JSONValue, headers: [(String, String)]) {
+        try validateOptions(config: config, options: options)
+
         var body: [(String, JSONValue)] = []
         var headers = buildAuthHeaders(config: config, apiKey: apiKey)
 
@@ -76,8 +78,10 @@ enum RequestBuilder {
                     .object([("parts", .array([.object([("text", .string(system))])]))])
                 )
             }
+        case "MessageInArray":
+            break // system folds into the messages array (Transforms.applyMessageShape)
         default:
-            break // MessageInArray
+            throw LLMKitError.unsupported("chat request: unknown system placement \"\(config.systemPlacement)\"")
         }
 
         Transforms.applyMessageShape(
@@ -224,8 +228,10 @@ enum RequestBuilder {
             headers.append((config.authHeader, "\(config.authPrefix) \(apiKey)"))
         case "HeaderAPIKey":
             headers.append((config.authHeader, apiKey))
+        case "QueryParamKey", "SigV4":
+            break // key rides in the URL query (buildURL) / the signature (send)
         default:
-            break // QueryParamKey / SigV4
+            break // unknown scheme contributes no header; the keyless request fails at the provider
         }
         if !config.requiredHeader.isEmpty {
             headers.append((config.requiredHeader, config.requiredHeaderValue))
@@ -248,15 +254,58 @@ enum RequestBuilder {
         }
         var resolved = endpoint
             .replacingOccurrences(of: "{model}", with: model)
-            .replacingOccurrences(of: "{apiKey}", with: apiKey)
+            .replacingOccurrences(of: "{apiKey}", with: urlencode(apiKey))
         if config.authScheme == "QueryParamKey" {
             let separator = resolved.contains("?") ? "&" : "?"
-            resolved += "\(separator)\(config.authQueryParam)=\(apiKey)"
+            resolved += "\(separator)\(config.authQueryParam)=\(urlencode(apiKey))"
         }
         return base + resolved
     }
 
     // MARK: - Options
+
+    /// Loud pre-flight rejection of options the provider's supported-options
+    /// table lacks (mirror of Go's `validateOptions`, go/llmkit.go): a silently
+    /// dropped knob is a footgun. Providers declaring no supported table skip
+    /// validation entirely. Runs before any body construction so prompt, stream,
+    /// agent, and batch all inherit it from the shared buildBody seam.
+    static func validateOptions(config: ProviderSpec, options: PromptOptions) throws {
+        let supported = supportedOptions(config.name)
+        guard !supported.isEmpty else { return }
+        func has(_ key: OptionKey) -> Bool {
+            supported.contains { $0.key == key }
+        }
+        if options.topK != nil, !has(.topK) {
+            throw LLMKitError.validation(field: "top_k", message: "not supported by \(config.slug)")
+        }
+        if options.seed != nil, !has(.seed) {
+            throw LLMKitError.validation(field: "seed", message: "not supported by \(config.slug)")
+        }
+        if options.frequencyPenalty != nil, !has(.frequencyPenalty) {
+            throw LLMKitError.validation(field: "frequency_penalty", message: "not supported by \(config.slug)")
+        }
+        if options.presencePenalty != nil, !has(.presencePenalty) {
+            throw LLMKitError.validation(field: "presence_penalty", message: "not supported by \(config.slug)")
+        }
+        if options.thinkingBudget != nil, !has(.thinkingBudget) {
+            throw LLMKitError.validation(field: "thinking_budget", message: "not supported by \(config.slug)")
+        }
+        if let effort = options.reasoningEffort {
+            if !has(.reasoningEffort) {
+                throw LLMKitError.validation(field: "reasoning_effort", message: "not supported by \(config.slug)")
+            }
+            // Value check against the ontology-defined allowedValues
+            // (provider-level overrides), mirroring Go.
+            if let override = optionOverrides(config.name).first(
+                where: { $0.key == .reasoningEffort && !$0.allowedValues.isEmpty }),
+                !override.allowedValues.contains(effort) {
+                throw LLMKitError.validation(
+                    field: "reasoning_effort",
+                    message: "invalid value \"\(effort)\", must be one of: \(override.allowedValues.joined(separator: ","))"
+                )
+            }
+        }
+    }
 
     /// Applies generation parameters to `body` and returns the accumulated root
     /// extras (ADR-029 THK-003) for the caller to deep-merge at the body root.

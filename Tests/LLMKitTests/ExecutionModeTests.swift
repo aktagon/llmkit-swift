@@ -95,4 +95,70 @@ final class ExecutionModeTests: XCTestCase {
         }
         XCTAssertNotNil(params.member("output_format"))
     }
+
+    // MARK: - Option validation (loud rejection of unsupported knobs)
+
+    /// OpenAI's supported-options table has no top_k, so setting topK must throw
+    /// a validation error naming the wire field instead of silently dropping it
+    /// (mirror of Go's validateOptions).
+    func testUnsupportedTopKRejectedLoudly() async throws {
+        MockURLProtocol.reset()
+        do {
+            _ = try await mockClient(.openai).text.model("gpt-4o-mini").topK(40)
+                .prompt("What is the capital of Finland?")
+            XCTFail("expected a validation error for top_k on openai")
+        } catch let LLMKitError.validation(field, message) {
+            XCTAssertEqual(field, "top_k")
+            XCTAssertEqual(message, "not supported by openai")
+        }
+    }
+
+    /// Anthropic declares top_k, so the same knob passes validation and lands
+    /// on the wire.
+    func testSupportedTopKPassesValidation() async throws {
+        MockURLProtocol.reset()
+        MockURLProtocol.responseBody = Data(
+            "{\"content\":[{\"type\":\"text\",\"text\":\"Helsinki\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":7,\"output_tokens\":2}}".utf8
+        )
+
+        let response = try await mockClient(.anthropic).text.model("claude-sonnet-4-6").topK(40)
+            .prompt("What is the capital of Finland?")
+
+        XCTAssertEqual(response.text, "Helsinki")
+        let body = try JSONValue.parse(String(decoding: XCTUnwrap(MockURLProtocol.capturedBody), as: UTF8.self))
+        XCTAssertEqual(body.member("top_k"), .int(40))
+    }
+
+    /// An effort token outside the provider's allowedValues whitelist rejects
+    /// with the Go-parity invalid-value message (anthropic allows
+    /// low/medium/high/xhigh/max).
+    func testReasoningEffortValueOutsideWhitelistRejected() async throws {
+        MockURLProtocol.reset()
+        do {
+            _ = try await mockClient(.anthropic).text.model("claude-sonnet-4-6")
+                .reasoningEffort("extreme")
+                .prompt("What is the capital of Finland?")
+            XCTFail("expected a validation error for reasoning_effort value")
+        } catch let LLMKitError.validation(field, message) {
+            XCTAssertEqual(field, "reasoning_effort")
+            XCTAssertEqual(message, "invalid value \"extreme\", must be one of: low,medium,high,xhigh,max")
+        }
+    }
+
+    // MARK: - Stream protocol guard (ADR-055)
+
+    /// A non-default chat protocol on the stream terminal must reject loudly —
+    /// silently sending the default Chat Completions envelope after an explicit
+    /// opt-in is a footgun (parity with the batch terminal's guard).
+    func testStreamRejectsNonDefaultProtocol() async throws {
+        MockURLProtocol.reset()
+        do {
+            _ = try await mockClient(.openai).text.model("gpt-4o-mini").protocol("responses")
+                .stream("What is the capital of Finland?") { _ in }
+            XCTFail("expected a validation error for protocol on stream")
+        } catch let LLMKitError.validation(field, message) {
+            XCTAssertEqual(field, "protocol")
+            XCTAssertEqual(message, "stream supports only the default chat protocol")
+        }
+    }
 }

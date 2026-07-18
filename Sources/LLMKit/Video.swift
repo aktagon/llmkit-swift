@@ -97,7 +97,7 @@ public struct Video: Sendable {
             return VideoJob(handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride)
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = "\(error)"
+            postEvent.err = Middleware.errString(error)
             Middleware.firePost(middleware, postEvent)
             throw error
         }
@@ -296,21 +296,35 @@ public struct Video: Sendable {
 
 /// The live video-generation handle: the persistable `VideoHandle` value plus the
 /// credentials + transport needed to poll it (mirror of `BatchJob`).
-public final class VideoJob {
+public final class VideoJob: Sendable {
     /// The persistable identity value (ADR-014 cross-process resume).
     public let handle: VideoHandle
     let apiKey: String
     let http: HTTPClient
     let baseURLOverride: String?
-    /// Poll cadence for `wait` (tests shrink these; defaults match Rust/Go).
-    var interval: TimeInterval = 5
-    var timeout: TimeInterval = 600
+    /// Poll cadence for `wait` (tests shrink these via `cadence`; defaults match Rust/Go).
+    let interval: TimeInterval
+    let timeout: TimeInterval
 
-    init(handle: VideoHandle, apiKey: String, http: HTTPClient, baseURLOverride: String?) {
+    init(
+        handle: VideoHandle, apiKey: String, http: HTTPClient, baseURLOverride: String?,
+        interval: TimeInterval = 5, timeout: TimeInterval = 600
+    ) {
         self.handle = handle
         self.apiKey = apiKey
         self.http = http
         self.baseURLOverride = baseURLOverride
+        self.interval = interval
+        self.timeout = timeout
+    }
+
+    /// A copy with the same identity + transport and the given poll cadence
+    /// (internal test seam).
+    func cadence(interval: TimeInterval, timeout: TimeInterval) -> VideoJob {
+        VideoJob(
+            handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
+            interval: interval, timeout: timeout
+        )
     }
 
     /// One normalized poll round-trip (ADR-063 POLL-001): no loop.

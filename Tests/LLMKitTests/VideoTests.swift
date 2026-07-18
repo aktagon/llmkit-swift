@@ -26,8 +26,9 @@ final class VideoTests: XCTestCase {
             .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
         XCTAssertEqual(job.handle.id, "vid_alpine")
 
-        job.interval = 0.01 // shrink the inter-poll sleep for the test
-        let response = try await job.wait()
+        // Shrink the inter-poll sleep for the test.
+        let fast = job.cadence(interval: 0.01, timeout: 600)
+        let response = try await fast.wait()
         XCTAssertEqual(response.videos.count, 1)
         XCTAssertEqual(response.videos.first?.url, "https://xai.example/vid_alpine.mp4")
         XCTAssertEqual(response.videos.first?.bytes, [])
@@ -77,8 +78,8 @@ final class VideoTests: XCTestCase {
         XCTAssertEqual(submitBody.stringValue(at: "model"), "grok-imagine-video")
         XCTAssertTrue(submitBody.stringValue(at: "image.url").hasPrefix("data:image/png;base64,"))
 
-        job.interval = 0.01
-        let response = try await job.wait()
+        let fast = job.cadence(interval: 0.01, timeout: 600)
+        let response = try await fast.wait()
         XCTAssertEqual(response.videos.first?.url, "https://xai.example/vid_i2v.mp4")
     }
 
@@ -106,9 +107,9 @@ final class VideoTests: XCTestCase {
             Data(#"{"status":"failed","error":{"code":"content_policy","message":"blocked by content policy"}}"#.utf8),
         ]
         let job = try await mockClient(.grok).video.model("grok-imagine-video").submit("something")
-        job.interval = 0.01
+        let fast = job.cadence(interval: 0.01, timeout: 600)
         do {
-            _ = try await job.wait()
+            _ = try await fast.wait()
             XCTFail("expected a failure error from a failed video job")
         } catch let LLMKitError.unsupported(message) {
             XCTAssertTrue(message.contains("blocked by content policy"), "got: \(message)")
@@ -130,8 +131,8 @@ final class VideoTests: XCTestCase {
             .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
         XCTAssertEqual(job.handle.id, "mm_1")
 
-        job.interval = 0.01
-        let response = try await job.wait()
+        let fast = job.cadence(interval: 0.01, timeout: 600)
+        let response = try await fast.wait()
         XCTAssertEqual(response.videos.first?.url, "https://minimax.example/mm_1.mp4")
         XCTAssertEqual(response.videos.first?.bytes, [])
     }

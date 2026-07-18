@@ -122,7 +122,7 @@ public struct Upload: Sendable {
             return file
         } catch {
             postEvent.duration = Date().timeIntervalSince(start)
-            postEvent.err = "\(error)"
+            postEvent.err = Middleware.errString(error)
             Middleware.firePost(middleware, postEvent)
             throw error
         }
@@ -138,7 +138,7 @@ public struct Upload: Sendable {
         var url = base + upload.endpoint
         if config.authScheme == "QueryParamKey" && !config.authQueryParam.isEmpty {
             let separator = url.contains("?") ? "&" : "?"
-            url += "\(separator)\(config.authQueryParam)=\(apiKey)"
+            url += "\(separator)\(config.authQueryParam)=\(urlencode(apiKey))"
         }
 
         var headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)

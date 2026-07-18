@@ -173,7 +173,7 @@ enum VideoWire {
     static func appendQueryAuth(_ url: String, config: ProviderSpec, apiKey: String) -> String {
         guard config.authScheme == "QueryParamKey", !config.authQueryParam.isEmpty else { return url }
         let separator = url.contains("?") ? "&" : "?"
-        return "\(url)\(separator)\(config.authQueryParam)=\(apiKey)"
+        return "\(url)\(separator)\(config.authQueryParam)=\(urlencode(apiKey))"
     }
 
     /// Descends a dotted path (e.g. "id", "output.task_id", "Resp.video_id")
