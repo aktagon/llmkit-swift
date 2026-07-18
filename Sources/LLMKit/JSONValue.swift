@@ -91,7 +91,7 @@ extension JSONValue {
     }
 
     /// String at a dotted path, coercing scalars; empty string on miss.
-    func stringValue(at path: String) -> String {
+    public func stringValue(at path: String) -> String {
         switch lookup(path) {
         case let .string(value): return value
         case let .int(value): return String(value)
@@ -102,7 +102,7 @@ extension JSONValue {
     }
 
     /// Integer at a dotted path; 0 on miss.
-    func intValue(at path: String) -> Int {
+    public func intValue(at path: String) -> Int {
         switch lookup(path) {
         case let .int(value): return Int(value)
         case let .double(value): return Int(value)
@@ -111,7 +111,7 @@ extension JSONValue {
     }
 
     /// Double at a dotted path; 0.0 on miss.
-    func doubleValue(at path: String) -> Double {
+    public func doubleValue(at path: String) -> Double {
         switch lookup(path) {
         case let .double(value): return value
         case let .int(value): return Double(value)
@@ -198,7 +198,7 @@ extension JSONValue {
     /// doubles by the number token (a `.`/`e`/`E` marks a double), so booleans
     /// and integers never collapse the way `JSONSerialization` + `NSNumber`
     /// would.
-    static func parse(_ text: String) throws -> JSONValue {
+    public static func parse(_ text: String) throws -> JSONValue {
         var parser = Parser(Array(text))
         let value = try parser.parseValue()
         parser.skipWhitespace()
