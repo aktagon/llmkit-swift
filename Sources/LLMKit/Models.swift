@@ -137,15 +137,19 @@ public struct Providers: Sendable {
 
 // MARK: - Compiled-in runtime
 
-/// Walk the compiled-in slice and return `ModelInfo` records matching the
-/// optional capability filter.
+/// Records whose capabilities contain the filter; identity when nil. The
+/// single capability predicate (HANDOFF-036 A4): shared by the compiled-in
+/// path (`catalogueFilter`), the scoped live list (`catalogueRunList`), and
+/// — through it — the live aggregate. `get` stays an unfiltered point
+/// lookup by id.
+func applyCapFilter(_ models: [ModelInfo], _ capFilter: Capability?) -> [ModelInfo] {
+    guard let cap = capFilter else { return models }
+    return models.filter { $0.capabilities.contains(cap) }
+}
+
+/// Walk the compiled-in slice through the shared capability predicate.
 func catalogueFilter(_ capFilter: Capability?) -> [ModelInfo] {
-    compiledInModels
-        .filter { model in
-            guard let cap = capFilter else { return true }
-            return model.capabilities.contains(cap)
-        }
-        .map(compiledToModelInfo)
+    applyCapFilter(compiledInModels.map(compiledToModelInfo), capFilter)
 }
 
 /// Linear scan over the compiled-in slice. Returns nil on miss.
@@ -189,9 +193,8 @@ func catalogueRunLive(_ models: Models) async -> LiveResult {
             errors[providerNameSlug(info.id)] = ProviderError(kind: "unavailable", message: "\(error)")
         }
     }
-    if let cap = models.capFilter {
-        all = all.filter { $0.capabilities.contains(cap) }
-    }
+    // capFilter is already applied per-provider inside catalogueRunList
+    // (HANDOFF-036 A4) — no aggregate re-filter needed.
     all.sort { a, b in
         let pa = providerNameSlug(a.provider)
         let pb = providerNameSlug(b.provider)
@@ -203,8 +206,10 @@ func catalogueRunLive(_ models: Models) async -> LiveResult {
 
 /// Single-provider live HTTP. Paginates per the catalogue config until the
 /// parser reports no next cursor, then enriches each record with the
-/// ontology-derived capability list. Middleware fires once per call (not per
-/// page) for observability at the call granularity.
+/// ontology-derived capability list and applies the chain's `capFilter`
+/// (`withCapability` composes with `provider(p).list()` — HANDOFF-036 A4;
+/// `get` stays an unfiltered point lookup by id). Middleware fires once per
+/// call (not per page) for observability at the call granularity.
 func catalogueRunList(_ scoped: ScopedModels) async throws -> [ModelInfo] {
     guard let cfg = catalogueConfig(scoped.target) else { throw CatalogueError.notSupported }
     let pcfg = providerConfig(scoped.target)
@@ -222,7 +227,7 @@ func catalogueRunList(_ scoped: ScopedModels) async throws -> [ModelInfo] {
         let records = try await paginate(scoped: scoped, pcfg: pcfg, cfg: cfg)
         postEvent.duration = Date().timeIntervalSince(start)
         Middleware.firePost(mws, postEvent)
-        return enrich(scoped, records)
+        return applyCapFilter(enrich(scoped, records), scoped.capFilter)
     } catch {
         postEvent.duration = Date().timeIntervalSince(start)
         postEvent.err = Middleware.errString(error)
