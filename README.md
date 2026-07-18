@@ -6,6 +6,13 @@ Async/await, built on Foundation and `URLSession`. No third-party dependencies. 
 
 Also available for Go, TypeScript, Python, Rust, and Java.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aktagon/llmkit-swift/master/assets/logos/llmkit-languages.svg" alt="Go, TypeScript, Python, Rust, Swift, Java" height="26">
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aktagon/llmkit-swift/master/assets/logos/llmkit-providers.svg" alt="Anthropic, OpenAI, Google, and 26 more providers" height="26">
+</p>
+
 ## Install
 
 Add the package to your `Package.swift`:
