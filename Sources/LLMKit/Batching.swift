@@ -9,21 +9,35 @@ import Foundation
 ///
 ///
 ///
-public final class BatchJob {
+public final class BatchJob: Sendable {
     ///
     public let handle: BatchHandle
     let apiKey: String
     let http: HTTPClient
     let baseURLOverride: String?
     ///
-    var interval: TimeInterval = 2
-    var timeout: TimeInterval = 600
+    let interval: TimeInterval
+    let timeout: TimeInterval
 
-    init(handle: BatchHandle, apiKey: String, http: HTTPClient, baseURLOverride: String?) {
+    init(
+        handle: BatchHandle, apiKey: String, http: HTTPClient, baseURLOverride: String?,
+        interval: TimeInterval = 2, timeout: TimeInterval = 600
+    ) {
         self.handle = handle
         self.apiKey = apiKey
         self.http = http
         self.baseURLOverride = baseURLOverride
+        self.interval = interval
+        self.timeout = timeout
+    }
+
+    ///
+    ///
+    func cadence(interval: TimeInterval, timeout: TimeInterval) -> BatchJob {
+        BatchJob(
+            handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
+            interval: interval, timeout: timeout
+        )
     }
 
     ///

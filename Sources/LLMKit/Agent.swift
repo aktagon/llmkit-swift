@@ -6,6 +6,8 @@ import Foundation
 ///
 ///
 ///
+///
+///
 public final class Agent {
     private let provider: ProviderName
     private let apiKey: String
@@ -100,7 +102,7 @@ public final class Agent {
                 parsed = try ResponseParser.parse(config: config, body: data)
             } catch {
                 llmPost.duration = Date().timeIntervalSince(llmStart)
-                llmPost.err = "\(error)"
+                llmPost.err = Middleware.errString(error)
                 Middleware.firePost(options.middleware, llmPost)
                 throw error
             }

@@ -88,4 +88,28 @@ enum Middleware {
         event.phase = .post
         for hook in mws { _ = hook(event) }
     }
+
+    ///
+    ///
+    ///
+    ///
+    ///
+    static func errString(_ error: any Error) -> String {
+        if let veto = error as? MiddlewareVeto {
+            return "middleware veto: \(errString(veto.cause))"
+        }
+        if let known = error as? LLMKitError {
+            //
+            //
+            //
+            if case let .unsupported(message) = known {
+                return "unsupported: \(message)"
+            }
+            return known.errorDescription ?? "\(known)"
+        }
+        if let localized = error as? LocalizedError, let description = localized.errorDescription {
+            return description
+        }
+        return "\(error)"
+    }
 }
