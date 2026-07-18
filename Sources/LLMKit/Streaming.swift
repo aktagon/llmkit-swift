@@ -15,7 +15,7 @@ enum Streamer {
         options: PromptOptions,
         http: HTTPClient,
         baseURLOverride: String?,
-        onDelta: (String) -> Void
+        onDelta: @Sendable (String) -> Void
     ) async throws -> Response {
         guard let stream = streamConfig(config.name) else {
             throw LLMKitError.validation(field: "provider", message: "streaming not supported: \(config.slug)")
