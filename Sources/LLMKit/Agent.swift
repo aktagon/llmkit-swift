@@ -135,7 +135,7 @@ public final class Agent {
 
                 let content: String
                 if let tool = tools.first(where: { $0.name == call.name }) {
-                    do { content = try tool.run(call.input ?? .object([])) }
+                    do { content = try await tool.run(call.input ?? .object([])) }
                     catch { content = "error: \(error)" }
                 } else {
                     content = "error: unknown tool \(call.name)"

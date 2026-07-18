@@ -17,13 +17,19 @@ public struct Tool: Sendable {
 
     /// The executor: receives the model-supplied argument object and returns the
     /// stringified result (or throws, surfaced to the model as an error string).
-    public let run: @Sendable (JSONValue) throws -> String
+    /// `async` so blocking work (network, file IO — the normal tool body)
+    /// suspends instead of starving the width-limited cooperative pool; the
+    /// agent loop awaits each invocation. A synchronous closure still satisfies
+    /// this type unchanged (Swift converts sync -> async at the call site), so
+    /// pure-computation tools need no ceremony. Per-language idiom exception to
+    /// the Go/Rust sync mirror, same class as Java's `await()` rename (ADR-021).
+    public let run: @Sendable (JSONValue) async throws -> String
 
     public init(
         name: String,
         description: String,
         schema: JSONValue,
-        run: @escaping @Sendable (JSONValue) throws -> String
+        run: @escaping @Sendable (JSONValue) async throws -> String
     ) {
         self.name = name
         self.description = description
