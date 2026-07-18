@@ -49,6 +49,29 @@ final class ExecutionModeTests: XCTestCase {
         XCTAssertEqual(toolResult?.stringValue(at: "tool_call_id"), "call_1")
     }
 
+    func testAgentStopsAtMaxToolIterations() async throws {
+        MockURLProtocol.reset()
+        // The model asks for the tool on every turn (the last sequence entry
+        // repeats), so a cap of 2 must abort the loop after two iterations.
+        let toolCall = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"Helsinki\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}"
+        MockURLProtocol.responseSequence = [Data(toolCall.utf8)]
+
+        let tool = Tool(
+            name: "get_weather",
+            description: "Get the current weather for a city.",
+            schema: try JSONValue.parse("{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}}}"),
+            run: { _ in "sunny, 21C" }
+        )
+
+        do {
+            _ = try await mockClient(.openai).agent().addTool(tool).maxToolIterations(2)
+                .prompt("What is the weather in Helsinki?")
+            XCTFail("agent must stop at the iteration cap")
+        } catch LLMKitError.unsupported(let message) {
+            XCTAssertEqual(message, "max tool iterations (2) reached")
+        }
+    }
+
     // MARK: - Batch submit + wait round-trip
 
     func testBatchSubmitAndWait() async throws {
