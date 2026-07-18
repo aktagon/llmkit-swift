@@ -37,7 +37,15 @@ public struct Telemetry: Sendable {
     ///
     ///
     ///
-    public static func httpExport(endpoint: String, headers: [String: String] = [:]) -> TelemetryExport {
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    public static func httpExport(
+        endpoint: String, headers: [String: String] = [:], session: URLSession = .shared
+    ) -> TelemetryExport {
         let base = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
         let url = base + TelemetryConst.tracesPath
         return { payload in
@@ -47,7 +55,7 @@ public struct Telemetry: Sendable {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
             request.httpBody = payload
-            URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
+            session.dataTask(with: request) { _, _, _ in }.resume()
         }
     }
 }
