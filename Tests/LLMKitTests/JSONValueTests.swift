@@ -67,4 +67,16 @@ final class JSONValueTests: XCTestCase {
         let reordered = JSONValue.object([("stream", .bool(false)), ("model", .string("gpt-4o-mini"))])
         XCTAssertEqual(ordered, reordered)
     }
+
+    func testDoubleValueReadsDoublepromotesIntAndDefaultsToZero() throws {
+        let value = try JSONValue.parse(
+            "{\"usage\":{\"cost\":0.0125,\"prompt_tokens\":14},\"model\":\"gpt-4o-mini\"}"
+        )
+        XCTAssertEqual(value.doubleValue(at: "usage.cost"), 0.0125)
+        // Int leaves promote to Double (providers emit whole-number costs).
+        XCTAssertEqual(value.doubleValue(at: "usage.prompt_tokens"), 14.0)
+        // Non-numeric and missing paths read as 0.0, mirroring intValue.
+        XCTAssertEqual(value.doubleValue(at: "model"), 0.0)
+        XCTAssertEqual(value.doubleValue(at: "usage.completion_tokens"), 0.0)
+    }
 }

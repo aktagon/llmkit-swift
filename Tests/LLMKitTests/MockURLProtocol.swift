@@ -5,6 +5,10 @@ import Foundation
 /// builds without a live network call. Installed via an injected `URLSession`.
 final class MockURLProtocol: URLProtocol {
     static var capturedBody: Data?
+    /// Every request body served, in order. `capturedBody` keeps only the last
+    /// request; multi-hop flows (resource-cache create + generate) assert the
+    /// earlier hops here.
+    static var capturedBodies: [Data] = []
     static var capturedHeaders: [String: String] = [:]
     /// Every request URL served, in order (drives catalogue pagination-cursor
     /// assertions where the sequence alone cannot prove the cursor was appended).
@@ -18,6 +22,7 @@ final class MockURLProtocol: URLProtocol {
 
     static func reset() {
         capturedBody = nil
+        capturedBodies = []
         capturedHeaders = [:]
         capturedURLs = []
         responseStatusCode = 200
@@ -46,6 +51,9 @@ final class MockURLProtocol: URLProtocol {
 
     override func startLoading() {
         MockURLProtocol.capturedBody = MockURLProtocol.body(from: request)
+        if let body = MockURLProtocol.capturedBody {
+            MockURLProtocol.capturedBodies.append(body)
+        }
         if let url = request.url?.absoluteString {
             MockURLProtocol.capturedURLs.append(url)
         }
