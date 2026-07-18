@@ -114,8 +114,11 @@ struct HTTPClient: Sendable {
     }
 
     /// GET a URL signed with AWS SigV4 (Bedrock async-invoke poll). The empty
-    /// body is signed too; the caller custom headers (ADR-052) ride alongside
-    /// unsigned, skipping any already-signed header so the signature is intact.
+    /// body is signed too, but NO Content-Type: the GET sends none, and a
+    /// signed-but-never-sent header is a guaranteed 403 (AWS recomputes the
+    /// canonical request from the headers it receives). The caller custom
+    /// headers (ADR-052) ride alongside unsigned, skipping any already-signed
+    /// header so the signature is intact.
     func getTextSigV4(
         url: String,
         accessKey: String,
@@ -132,7 +135,7 @@ struct HTTPClient: Sendable {
         let signed = SigV4.sign(
             method: "GET", url: endpoint, body: Data(),
             accessKey: accessKey, secretKey: secretKey, sessionToken: sessionToken,
-            region: region, service: service, contentType: "application/json"
+            region: region, service: service, contentType: ""
         )
         for (name, value) in signed { request.setValue(value, forHTTPHeaderField: name) }
         applyCustomHeaders(&request)

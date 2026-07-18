@@ -4,11 +4,24 @@ import CryptoKit
 /// AWS Signature Version 4 signing for Bedrock (ADR SigV4 auth scheme). A
 /// port of `go/sigv4.go`, using CryptoKit for HMAC-SHA256 / SHA256 so the SDK
 /// stays dependency-free. Returns the headers to add to the outbound request;
-/// the signature is not asserted by the wire suite (it is time-dependent), but
-/// a live Bedrock call verifies it byte-for-byte.
+/// the timestamp is the only non-deterministic signing input, so the CR-002
+/// wire driver (`SigV4WireTests`) injects a frozen clock and asserts the
+/// canonical request / string-to-sign / Authorization byte-identically against
+/// the shared golden at `codegen/testdata/wire/sigv4/v1/`.
 enum SigV4 {
-    /// Compute the SigV4 headers for a POST. `contentType` and `host` are folded
-    /// into the signed set alongside the `x-amz-*` headers, matching Go.
+    /// The intermediate signing artifacts. Production callers use only
+    /// `headers`; the wire driver asserts the other three against the golden.
+    struct Parts {
+        let headers: [(String, String)]
+        let canonicalRequest: String
+        let stringToSign: String
+        let authorization: String
+    }
+
+    /// Compute the SigV4 headers for a request. `contentType` is folded into
+    /// the signed set only when non-empty: AWS recomputes the canonical request
+    /// from the headers actually received, so signing a Content-Type on a
+    /// request that never sends one (a bodyless GET) is a guaranteed 403.
     static func sign(
         method: String,
         url: URL,
@@ -18,9 +31,30 @@ enum SigV4 {
         sessionToken: String,
         region: String,
         service: String,
-        contentType: String
+        contentType: String,
+        now: Date = Date()
     ) -> [(String, String)] {
-        let now = Date()
+        signParts(
+            method: method, url: url, body: body,
+            accessKey: accessKey, secretKey: secretKey, sessionToken: sessionToken,
+            region: region, service: service, contentType: contentType, now: now
+        ).headers
+    }
+
+    /// `sign` with the artifacts exposed (CR-002 clock seam): a fixed `now`
+    /// makes the whole signature chain reproducible for the cross-SDK golden.
+    static func signParts(
+        method: String,
+        url: URL,
+        body: Data,
+        accessKey: String,
+        secretKey: String,
+        sessionToken: String,
+        region: String,
+        service: String,
+        contentType: String,
+        now: Date
+    ) -> Parts {
         var utc = Calendar(identifier: .gregorian)
         utc.timeZone = TimeZone(identifier: "UTC")!
         let comps = utc.dateComponents([.year, .month, .day, .hour, .minute, .second], from: now)
@@ -33,12 +67,15 @@ enum SigV4 {
         let payloadHash = sha256Hex(body)
 
         // The signed header set (lowercased names, sorted). Values are trimmed.
+        // content-type only when the request actually sends one (see `sign`).
         var signed: [(String, String)] = [
-            ("content-type", contentType),
             ("host", host),
             ("x-amz-content-sha256", payloadHash),
             ("x-amz-date", amzdate),
         ]
+        if !contentType.isEmpty {
+            signed.append(("content-type", contentType))
+        }
         if !sessionToken.isEmpty {
             signed.append(("x-amz-security-token", sessionToken))
         }
@@ -85,7 +122,12 @@ enum SigV4 {
         if !sessionToken.isEmpty {
             headers.append(("X-Amz-Security-Token", sessionToken))
         }
-        return headers
+        return Parts(
+            headers: headers,
+            canonicalRequest: canonicalRequest,
+            stringToSign: stringToSign,
+            authorization: authorization
+        )
     }
 
     private static func canonicalQueryString(_ url: URL) -> String {
