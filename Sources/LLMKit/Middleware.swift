@@ -25,8 +25,13 @@ public struct Event: Sendable {
     public var result: String
     /// Set for `llmRequest`, post phase.
     public var usage: Usage?
-    /// Set in the post phase when the operation failed.
+    /// Set in the post phase when the operation failed. Human-readable;
+    /// telemetry never re-parses it (ADR-071).
     public var err: String?
+    /// Set in the post phase when the operation failed: one of
+    /// api_error | validation_error | error, stamped structurally from the
+    /// typed error (ADR-071).
+    public var errType: String?
     /// Set in the post phase (wall-clock duration of the operation).
     public var duration: TimeInterval?
 
@@ -40,6 +45,7 @@ public struct Event: Sendable {
         result: String = "",
         usage: Usage? = nil,
         err: String? = nil,
+        errType: String? = nil,
         duration: TimeInterval? = nil
     ) {
         self.op = op
@@ -51,6 +57,7 @@ public struct Event: Sendable {
         self.result = result
         self.usage = usage
         self.err = err
+        self.errType = errType
         self.duration = duration
     }
 }
@@ -92,16 +99,16 @@ enum Middleware {
     /// Renders an error to the canonical `Event.err` string. Swift's default
     /// interpolation of an enum error renders its REFLECTION
     /// (`validation(field: "model", message: ...)`), not `errorDescription`, so
-    /// every fire site routes through this helper to get the stable prefix
-    /// forms telemetry classification keys off (mirror of Rust's `Display`).
+    /// every fire site routes through this helper to get the stable
+    /// human-readable forms (mirror of Rust's `Display`). Telemetry never
+    /// re-parses these strings — the machine-read kind is `errType` (ADR-071).
     static func errString(_ error: any Error) -> String {
         if let veto = error as? MiddlewareVeto {
             return "middleware veto: \(errString(veto.cause))"
         }
         if let known = error as? LLMKitError {
             // `.unsupported` renders bare (no prefix) for callers; the
-            // canonical middleware string carries the Rust-parity prefix so
-            // classification maps it to "error", not the "api_error" fallback.
+            // canonical middleware string carries the Rust-parity prefix.
             if case let .unsupported(message) = known {
                 return "unsupported: \(message)"
             }
@@ -111,5 +118,31 @@ enum Middleware {
             return description
         }
         return "\(error)"
+    }
+
+    /// Maps a typed error to the stable OTEL `error.type` kind carried on
+    /// `Event.errType` (ADR-071): api -> api_error, validation ->
+    /// validation_error, everything else (transport, decoding, unsupported,
+    /// veto, unknown) -> error. Classification is structural — it pattern-
+    /// matches the typed error and never re-parses a message string.
+    static func errType(_ error: any Error) -> String {
+        if error is MiddlewareVeto { return "error" }
+        if let known = error as? LLMKitError {
+            switch known {
+            case .api: return "api_error"
+            case .validation: return "validation_error"
+            case .transport, .decoding, .unsupported, .pollTimeout: return "error"
+            }
+        }
+        return "error"
+    }
+
+    /// The ONE erasure seam (ADR-071 ETY-003): every fire site that records a
+    /// failed operation routes through here, so `err` (human-readable) and
+    /// `errType` (machine-read kind) are always stamped together from the same
+    /// typed error before it is erased into the `Event`.
+    static func setError(_ event: inout Event, _ error: any Error) {
+        event.err = errString(error)
+        event.errType = errType(error)
     }
 }
