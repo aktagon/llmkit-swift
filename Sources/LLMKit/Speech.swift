@@ -81,7 +81,12 @@ public struct Speech: Sendable {
         guard (200..<300).contains(statusCode) else {
             throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
         }
-        return parseResponse(encoding: sgCfg.audioResponseEncoding, fallbackMime: modelDef.outputMime, body: data)
+        return try parseResponse(
+            provider: config.slug,
+            encoding: sgCfg.audioResponseEncoding,
+            fallbackMime: modelDef.outputMime,
+            body: data
+        )
     }
 
     ///
@@ -126,13 +131,27 @@ public struct Speech: Sendable {
     ///
     ///
     ///
-    private func parseResponse(encoding: String, fallbackMime: String, body: Data) -> SpeechResponse {
+    ///
+    ///
+    private func parseResponse(
+        provider: String, encoding: String, fallbackMime: String, body: Data
+    ) throws -> SpeechResponse {
         var bytes: [UInt8] = []
         if encoding == "rawBody" {
             bytes = [UInt8](body)
-        } else if let raw = try? JSONValue.parse(String(decoding: body, as: UTF8.self)),
-                  case let .string(b64)? = raw.member("audioContent"), !b64.isEmpty,
-                  let decoded = Data(base64Encoded: b64) {
+        } else {
+            let raw: JSONValue
+            do {
+                raw = try JSONValue.parse(String(decoding: body, as: UTF8.self))
+            } catch {
+                throw LLMKitError.decoding("\(provider) speech response: not valid JSON: \(error)")
+            }
+            guard case let .string(b64)? = raw.member("audioContent"), !b64.isEmpty else {
+                throw LLMKitError.decoding("\(provider) speech response: missing or empty audioContent")
+            }
+            guard let decoded = Data(base64Encoded: b64) else {
+                throw LLMKitError.decoding("\(provider) speech response: invalid base64 in audioContent")
+            }
             bytes = [UInt8](decoded)
         }
         return SpeechResponse(
