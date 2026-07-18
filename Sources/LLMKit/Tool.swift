@@ -17,13 +17,19 @@ public struct Tool: Sendable {
 
     ///
     ///
-    public let run: @Sendable (JSONValue) throws -> String
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    public let run: @Sendable (JSONValue) async throws -> String
 
     public init(
         name: String,
         description: String,
         schema: JSONValue,
-        run: @escaping @Sendable (JSONValue) throws -> String
+        run: @escaping @Sendable (JSONValue) async throws -> String
     ) {
         self.name = name
         self.description = description
