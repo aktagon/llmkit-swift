@@ -42,13 +42,29 @@ final class SpeechTests: XCTestCase {
         XCTAssertEqual(resp.finishReason, "")
     }
 
-    func testInworldEmptyAudioContentYieldsNoBytes() async throws {
-        let resp = try await client(.inworld, response: Data("{\"audioContent\":\"\"}".utf8)).speech
-            .model("inworld-tts-2").voice("Alex")
-            .generate("silence")
-
-        XCTAssertEqual(resp.audio.mimeType, "audio/wav")
-        XCTAssertTrue(resp.audio.bytes.isEmpty)
+    /// HANDOFF-036 A5: a 2xx whose body does not parse to audio is a decoding
+    /// error naming the provider and field — never silent empty audio.
+    func testInworldMalformed2xxIsDecodingError() async throws {
+        let cases: [(name: String, body: String, want: String)] = [
+            ("missing audioContent", #"{"usage":{"processedCharactersCount":8}}"#, "missing or empty audioContent"),
+            ("empty audioContent", #"{"audioContent":""}"#, "missing or empty audioContent"),
+            ("invalid base64", #"{"audioContent":"%%not-base64%%"}"#, "invalid base64"),
+            ("non-JSON body", "<html>Bad Gateway</html>", "not valid JSON"),
+        ]
+        for c in cases {
+            do {
+                _ = try await client(.inworld, response: Data(c.body.utf8)).speech
+                    .model("inworld-tts-2").voice("Alex")
+                    .generate("silence")
+                XCTFail("expected decoding error for \(c.name)")
+            } catch let err as LLMKitError {
+                guard case let .decoding(message) = err else {
+                    return XCTFail("expected .decoding for \(c.name), got \(err)")
+                }
+                XCTAssertTrue(message.contains(c.want), "\(c.name): \(message)")
+                XCTAssertTrue(message.contains("inworld"), "error must name the provider: \(message)")
+            }
+        }
     }
 
     // MARK: - Response parsing (rawBody shape — OpenAI)
@@ -69,7 +85,10 @@ final class SpeechTests: XCTestCase {
     // MARK: - Request bodies (per wire shape)
 
     func testInworldRequestBody() async throws {
-        _ = try await client(.inworld, response: Data("{\"audioContent\":\"\"}".utf8)).speech
+        // A valid envelope: since HANDOFF-036 A5 a malformed 2xx throws, so the
+        // request-body assertion needs a parseable reply.
+        let envelope = "{\"audioContent\":\"\(Self.wavBase64)\"}"
+        _ = try await client(.inworld, response: Data(envelope.utf8)).speech
             .model("inworld-tts-2").voice("Dennis")
             .generate("Hello from llmkit.")
 
