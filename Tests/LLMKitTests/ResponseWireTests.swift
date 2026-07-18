@@ -271,4 +271,74 @@ final class ResponseWireTests: XCTestCase {
     func testModelsGoogle() throws {
         try driveModels(shape: "models-google", parse: parseGoogleModelsResponse)
     }
+
+    /// Batch results parse (HANDOFF-036 A1): a completed batch's RESULTS file —
+    /// one succeeded line + one errored line (Anthropic result.type=errored
+    /// carries no result.message at the configured resultBodyPath). Every SDK
+    /// must SKIP the errored line and return the successful subset (count 1); a
+    /// throwing parser would destroy a completed batch. Driven through the real
+    /// public path: BatchJob.poll against a two-hop mock (Anthropic status
+    /// "ended" -> GET .../results serving the anchored JSONL verbatim; the
+    /// .jsonl extension marks a JSONL results file, not a JSON document). Known
+    /// shared assumption (PROVENANCE.md): no SDK matches results by custom_id —
+    /// all assume file line order.
+    private func batchResultsArtifact(_ responses: [Response]) -> JSONValue {
+        let first: JSONValue
+        if let r = responses.first {
+            first = .object([
+                ("finishReason", .string(r.finishReason)),
+                ("text", .string(r.text)),
+                ("usage", .object([
+                    ("cacheRead", .int(Int64(r.usage.cacheRead))),
+                    ("cacheWrite", .int(Int64(r.usage.cacheWrite))),
+                    ("cost", .double(r.usage.cost)),
+                    ("input", .int(Int64(r.usage.input))),
+                    ("output", .int(Int64(r.usage.output))),
+                    ("reasoning", .int(Int64(r.usage.reasoning))),
+                ])),
+            ])
+        } else {
+            first = .object([])
+        }
+        return .object([
+            ("content", .object([
+                ("count", .int(Int64(responses.count))),
+                ("first", first),
+                ("kind", .string("batch_results")),
+            ])),
+            ("error", .null),
+        ])
+    }
+
+    func testBatchResultsAnthropic() async throws {
+        let results = try Data(
+            contentsOf: TestPaths.testdata("wire/response/v1/bodies/batch-results-anthropic.jsonl")
+        )
+        MockURLProtocol.reset()
+        MockURLProtocol.responseSequence = [
+            Data("{\"id\":\"batch_1\",\"processing_status\":\"ended\"}".utf8),
+            results,
+        ]
+        let job = BatchJob(
+            handle: BatchHandle(id: "batch_1", provider: .anthropic, raw: false),
+            apiKey: "test-key",
+            http: HTTPClient(session: MockURLProtocol.makeSession()),
+            baseURLOverride: nil
+        )
+        let status = try await job.poll()
+        guard let responses = status.result else {
+            XCTFail("expected a succeeded result, got \(status.state)")
+            return
+        }
+        let projection = batchResultsArtifact(responses)
+        try TestPaths.writeResponseArtifact(shape: "batch-results-anthropic", projection: projection)
+        let goldenText = try String(
+            contentsOf: TestPaths.testdata("wire/response/v1/batch-results-anthropic.json"), encoding: .utf8
+        )
+        XCTAssertEqual(
+            projection,
+            try JSONValue.parse(goldenText),
+            "batch-results-anthropic projection differs from shared golden"
+        )
+    }
 }
