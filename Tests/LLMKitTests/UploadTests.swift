@@ -73,6 +73,24 @@ final class UploadTests: XCTestCase {
         XCTAssertTrue(body.contains("assistants"), body)
     }
 
+    /// HANDOFF-036 A2: a quote, backslash, or CR/LF in a caller-controlled
+    /// filename must not break out of the Content-Disposition part header.
+    /// The shared hostile vector is asserted identically in Go, Java, Python.
+    func testUploadHostileFilenameEscaped() async throws {
+        MockURLProtocol.responseBody = Data(
+            #"{"id":"file_esc","filename":"clean.mp3","mime_type":"audio/mpeg"}"#.utf8)
+        let hostile = "evil\"name\\inject\r\nX-Fake: 1.mp3"
+
+        _ = try await client(.anthropic)
+            .upload().bytes(Data("audio-bytes".utf8)).filename(hostile).run()
+
+        let body = String(decoding: try XCTUnwrap(MockURLProtocol.capturedBody), as: UTF8.self)
+        XCTAssertTrue(
+            body.contains(#"filename="evil\"name\\injectX-Fake: 1.mp3""#),
+            "filename not escaped: \(body)")
+        XCTAssertFalse(body.contains("\nX-Fake"), "raw CR/LF leaked: \(body)")
+    }
+
     func testFiresUploadMiddleware() async throws {
         MockURLProtocol.responseBody = Data(#"{"id":"file_1","filename":"a.txt","mime_type":"text/plain"}"#.utf8)
         let recorder = Recorder()
