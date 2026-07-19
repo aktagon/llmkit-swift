@@ -19,11 +19,11 @@ Add the package to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/aktagon/llmkit-swift.git", branch: "master")
+    .package(url: "https://github.com/aktagon/llmkit-swift.git", from: "1.0.0")
 ]
 ```
 
-and depend on the `LLMKit` product from your target. Versioned tags begin at `sw-v1.0.0`; until the first tag, track `master`.
+and depend on the `LLMKit` product from your target.
 
 ## Quick Start
 
