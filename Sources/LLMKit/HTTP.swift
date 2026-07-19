@@ -55,7 +55,7 @@ struct HTTPClient: Sendable {
         headers: [(String, String)]
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
-            throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
+            throw LLMKitError.validation(field: "url", message: "invalid URL")
         }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -89,7 +89,7 @@ struct HTTPClient: Sendable {
         service: String
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
-            throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
+            throw LLMKitError.validation(field: "url", message: "invalid URL")
         }
         guard let payload = body.serialized().data(using: .utf8) else {
             throw LLMKitError.validation(field: "body", message: "could not UTF-8 encode request body")
@@ -128,7 +128,7 @@ struct HTTPClient: Sendable {
         service: String
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
-            throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
+            throw LLMKitError.validation(field: "url", message: "invalid URL")
         }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
@@ -150,7 +150,7 @@ struct HTTPClient: Sendable {
     /// batch poll + result-fetch hops.
     func getText(url: String, headers: [(String, String)]) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
-            throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
+            throw LLMKitError.validation(field: "url", message: "invalid URL")
         }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
@@ -190,7 +190,7 @@ struct HTTPClient: Sendable {
         headers: [(String, String)]
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
-            throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
+            throw LLMKitError.validation(field: "url", message: "invalid URL")
         }
         let boundary = "llmkit-boundary-\(UUID().uuidString)"
         var payload = Data()
@@ -229,7 +229,7 @@ struct HTTPClient: Sendable {
         headers: [(String, String)]
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
-            throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
+            throw LLMKitError.validation(field: "url", message: "invalid URL")
         }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -256,7 +256,7 @@ struct HTTPClient: Sendable {
         headers: [(String, String)]
     ) async throws -> (statusCode: Int, lines: AsyncLineSequence<URLSession.AsyncBytes>) {
         guard let endpoint = URL(string: url) else {
-            throw LLMKitError.validation(field: "url", message: "invalid URL: \(url)")
+            throw LLMKitError.validation(field: "url", message: "invalid URL")
         }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
