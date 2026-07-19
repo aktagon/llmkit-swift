@@ -1,14 +1,14 @@
 import XCTest
 @testable import LLMKit
 
-/// Behavior tests for the client-scoped telemetry seam (Phase 4g): addTelemetry
-/// installs a post-phase export hook on every capability builder, so a prompt
-/// emits one OTLP span carrying the call's operation/provider/model/usage. The
-/// wire goldens assert the pure builder (including the ADR-071 typed-error
-/// path); these assert the middleware wiring, the fail-open, and the full
-/// structural classification table.
+///
+///
+///
+///
+///
+///
 final class TelemetryTests: XCTestCase {
-    /// Synchronous recorder for the OTLP payloads the export hook emits.
+    ///
     private final class Recorder: @unchecked Sendable {
         var payloads: [String] = []
         func record(_ data: Data) { payloads.append(String(decoding: data, as: UTF8.self)) }
@@ -31,7 +31,7 @@ final class TelemetryTests: XCTestCase {
         let response = try await client.text.model("gpt-4o").prompt("Capital of Finland?")
         XCTAssertEqual(response.text, "Helsinki")
 
-        // Exactly one span was exported (post phase only; pre is a no-op).
+        //
         XCTAssertEqual(recorder.payloads.count, 1)
         let span = try JSONValue.parse(try XCTUnwrap(recorder.payloads.first))
         let attrs = try XCTUnwrap(spanAttributes(span))
@@ -47,8 +47,8 @@ final class TelemetryTests: XCTestCase {
         MockURLProtocol.responseBody = Data(Self.chatResponse.utf8)
         MockURLProtocol.responseStatusCode = 200
 
-        // An export hook that throws-equivalent (does nothing observable but could
-        // fault) must never surface to the caller — the prompt still returns.
+        //
+        //
         struct Boom: Error {}
         let client = Client(provider: .openai, apiKey: "key", session: MockURLProtocol.makeSession())
             .addTelemetry(Telemetry(export: { _ in _ = Boom() }))
@@ -56,11 +56,11 @@ final class TelemetryTests: XCTestCase {
         XCTAssertEqual(response.text, "Helsinki")
     }
 
-    /// The batteries exporter POSTs through the injected session (HANDOFF-036
-    /// B4) — previously the one HTTP call in the SDK a test transport could not
-    /// intercept. Asserts URL assembly (`/v1/traces` suffix), the caller's
-    /// headers, and the payload arriving verbatim. Fire-and-forget, so the
-    /// capture is polled rather than awaited.
+    ///
+    ///
+    ///
+    ///
+    ///
     func testHTTPExportPostsThroughInjectedSession() async throws {
         MockURLProtocol.reset()
         MockURLProtocol.responseStatusCode = 200
@@ -85,11 +85,11 @@ final class TelemetryTests: XCTestCase {
         )
     }
 
-    /// The structural classification contract (ADR-071): api -> api_error,
-    /// validation -> validation_error, everything else (transport, decoding,
-    /// unsupported, veto, unknown) -> error. Asserted on TYPED errors — the
-    /// message strings the seam renders alongside stay pinned too, since
-    /// consumers read them (never telemetry, which reads errType).
+    ///
+    ///
+    ///
+    ///
+    ///
     func testErrTypeStructuralClassification() {
         let api = LLMKitError.api(provider: "openai", statusCode: 429, message: "rate limited")
         XCTAssertEqual(Middleware.errString(api), "openai: rate limited (429)")
@@ -115,8 +115,8 @@ final class TelemetryTests: XCTestCase {
         XCTAssertEqual(Middleware.errType(veto), "error")
     }
 
-    /// `setError` is the one erasure seam (ADR-071 ETY-003): it stamps err and
-    /// errType together from the same typed error.
+    ///
+    ///
     func testSetErrorStampsErrAndErrTypeTogether() {
         var event = Event(op: .llmRequest, provider: "openai", model: "gpt-4o", phase: .post)
         Middleware.setError(
@@ -126,10 +126,10 @@ final class TelemetryTests: XCTestCase {
         XCTAssertEqual(event.errType, "validation_error")
     }
 
-    /// End-to-end: a real validation rejection inside the llmRequest fire scope
-    /// (caching on a provider without a caching config) must export a span whose
-    /// error.type is "validation_error" — not the api_error fallback the old
-    /// reflection-rendered Event.err always produced.
+    ///
+    ///
+    ///
+    ///
     func testRejectionSpanCarriesValidationErrorType() async throws {
         MockURLProtocol.reset()
         let recorder = Recorder()
@@ -147,9 +147,9 @@ final class TelemetryTests: XCTestCase {
         XCTAssertEqual(attrs["error.type"], "validation_error")
     }
 
-    /// The catalogue path fires the client-scoped default middleware (one
-    /// modelsList pre+post pair per list() call), so telemetry observes live
-    /// catalogue calls too.
+    ///
+    ///
+    ///
     func testModelsListFiresClientMiddleware() async throws {
         MockURLProtocol.reset()
         let body = #"{"object":"list","data":[{"id":"gpt-5","object":"model","created":1715367049,"owned_by":"system"}]}"#
@@ -175,7 +175,7 @@ final class TelemetryTests: XCTestCase {
         XCTAssertEqual(phases.fires[1].1, .post)
     }
 
-    /// Extract the single span's attributes as a flat [key: stringValueOrIntValue].
+    ///
     private func spanAttributes(_ payload: JSONValue) -> [String: String]? {
         guard let span = payload
             .lookup("resourceSpans[0].scopeSpans[0].spans[0]"),

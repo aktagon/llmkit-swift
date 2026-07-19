@@ -1,38 +1,38 @@
 import Foundation
 
-/// Middleware runtime — pre-phase veto + post-phase observation. A port of
-/// Rust's `middleware.rs`. The `MiddlewareOp` / `MiddlewarePhase` enums are
-/// generated from the ontology (MiddlewareGen.swift); the `Event` struct and
-/// this runtime stay handwritten because they carry runtime coupling (the
-/// `Usage` / duration fields, the `MiddlewareFn` signature) — off the generated
-/// side in Rust too. The handwritten capability runtimes fire middleware around
-/// each operation site; user hooks observe every call and may veto in the pre
-/// phase.
+///
+///
+///
+///
+///
+///
+///
+///
 
-/// The observation record passed to each middleware hook. Fields beyond
-/// op/provider/model/phase are populated only for the ops that carry them
-/// (mirror of the generated `Event` struct).
+///
+///
+///
 public struct Event: Sendable {
     public var op: MiddlewareOp
     public var phase: MiddlewarePhase
     public var provider: String
     public var model: String
-    /// Set only for `toolCall`.
+    ///
     public var tool: String
-    /// Set only for `toolCall`, pre phase.
+    ///
     public var args: [String: JSONValue]
-    /// Set only for `toolCall`, post phase.
+    ///
     public var result: String
-    /// Set for `llmRequest`, post phase.
+    ///
     public var usage: Usage?
-    /// Set in the post phase when the operation failed. Human-readable;
-    /// telemetry never re-parses it (ADR-071).
+    ///
+    ///
     public var err: String?
-    /// Set in the post phase when the operation failed: one of
-    /// api_error | validation_error | error, stamped structurally from the
-    /// typed error (ADR-071).
+    ///
+    ///
+    ///
     public var errType: String?
-    /// Set in the post phase (wall-clock duration of the operation).
+    ///
     public var duration: TimeInterval?
 
     public init(
@@ -62,20 +62,20 @@ public struct Event: Sendable {
     }
 }
 
-/// A user middleware hook. A non-nil PRE-phase return vetoes the operation
-/// (surfaced as `MiddlewareVeto`); POST-phase return values are discarded.
+///
+///
 public typealias MiddlewareFn = @Sendable (Event) -> (any Error)?
 
-/// Wraps a pre-phase veto cause so callers can match on it
-/// (`catch let veto as MiddlewareVeto`).
+///
+///
 public struct MiddlewareVeto: Error {
     public let cause: any Error
     public init(cause: any Error) { self.cause = cause }
 }
 
 enum Middleware {
-    /// Run pre-phase hooks in registration order; the first non-nil return
-    /// aborts the operation and is thrown as `MiddlewareVeto`.
+    ///
+    ///
     static func firePre(_ mws: [MiddlewareFn], _ base: Event) throws {
         if mws.isEmpty { return }
         var event = base
@@ -87,8 +87,8 @@ enum Middleware {
         }
     }
 
-    /// Run post-phase hooks in registration order; return values are discarded
-    /// (post is strictly observational).
+    ///
+    ///
     static func firePost(_ mws: [MiddlewareFn], _ base: Event) {
         if mws.isEmpty { return }
         var event = base
@@ -96,19 +96,19 @@ enum Middleware {
         for hook in mws { _ = hook(event) }
     }
 
-    /// Renders an error to the canonical `Event.err` string. Swift's default
-    /// interpolation of an enum error renders its REFLECTION
-    /// (`validation(field: "model", message: ...)`), not `errorDescription`, so
-    /// every fire site routes through this helper to get the stable
-    /// human-readable forms (mirror of Rust's `Display`). Telemetry never
-    /// re-parses these strings — the machine-read kind is `errType` (ADR-071).
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
     static func errString(_ error: any Error) -> String {
         if let veto = error as? MiddlewareVeto {
             return "middleware veto: \(errString(veto.cause))"
         }
         if let known = error as? LLMKitError {
-            // `.unsupported` renders bare (no prefix) for callers; the
-            // canonical middleware string carries the Rust-parity prefix.
+            //
+            //
             if case let .unsupported(message) = known {
                 return "unsupported: \(message)"
             }
@@ -120,11 +120,11 @@ enum Middleware {
         return "\(error)"
     }
 
-    /// Maps a typed error to the stable OTEL `error.type` kind carried on
-    /// `Event.errType` (ADR-071): api -> api_error, validation ->
-    /// validation_error, everything else (transport, decoding, unsupported,
-    /// veto, unknown) -> error. Classification is structural — it pattern-
-    /// matches the typed error and never re-parses a message string.
+    ///
+    ///
+    ///
+    ///
+    ///
     static func errType(_ error: any Error) -> String {
         if error is MiddlewareVeto { return "error" }
         if let known = error as? LLMKitError {
@@ -137,10 +137,10 @@ enum Middleware {
         return "error"
     }
 
-    /// The ONE erasure seam (ADR-071 ETY-003): every fire site that records a
-    /// failed operation routes through here, so `err` (human-readable) and
-    /// `errType` (machine-read kind) are always stamped together from the same
-    /// typed error before it is erased into the `Event`.
+    ///
+    ///
+    ///
+    ///
     static func setError(_ event: inout Event, _ error: any Error) {
         event.err = errString(error)
         event.errType = errType(error)

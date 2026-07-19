@@ -1,10 +1,10 @@
 import XCTest
 @testable import LLMKit
 
-/// ADR-030: `Client.supports(_:)` — the public capability query (CR-005).
-/// CAP-002 is proven by exhaustive comparison against the exact generated
-/// `*Config` lookups the strict validation paths dispatch on, so the query and
-/// the pre-flight error cannot drift.
+///
+///
+///
+///
 final class SupportsTests: XCTestCase {
     private func client(_ provider: ProviderName) -> Client {
         Client(provider: provider, apiKey: "k")
@@ -23,8 +23,8 @@ final class SupportsTests: XCTestCase {
     }
 
     func testMatchesStrictGateLookups() {
-        // CAP-002: same predicate as the validation paths, never a parallel
-        // table. Exhaustive over the registry so drift is structurally caught.
+        //
+        //
         for provider in ProviderName.allCases {
             let c = client(provider)
             XCTAssertEqual(c.supports(.caching), cachingConfig(provider) != nil,

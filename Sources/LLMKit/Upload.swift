@@ -1,12 +1,12 @@
 import Foundation
 
-/// The Files API builder (ADR-060 / CR-004). `client.upload().path(p).run()`
-/// uploads a file to the provider and returns a `File` handle to attach to a
-/// later prompt via `.file(id)`. `path()` and `bytes()` are mutually exclusive —
-/// exactly one must be set; `filename()` is required with `bytes()` (no path to
-/// derive a name from) and overrides the derived name with `path()`; `mimeType()`
-/// overrides extension-based detection. Fires the `upload` MiddlewareOp.
-/// Mirrors Go `Upload`/`Run`, TS/Python/Rust `upload().run()`.
+///
+///
+///
+///
+///
+///
+///
 public struct Upload: Sendable {
     let provider: ProviderName
     let apiKey: String
@@ -25,32 +25,32 @@ public struct Upload: Sendable {
         self.http = http
     }
 
-    /// Read the upload payload from a filesystem path. The multipart filename
-    /// defaults to the path's last component unless `filename()` overrides it.
+    ///
+    ///
     public func path(_ value: String) -> Upload { with { $0.path = value } }
 
-    /// Upload the given bytes directly. `filename()` is required in this mode.
+    ///
     public func bytes(_ value: Data) -> Upload { with { $0.bytes = value } }
 
-    /// Override the multipart filename.
+    ///
     public func filename(_ value: String) -> Upload { with { $0.filename = value } }
 
-    /// Override the file part's Content-Type (else inferred from the filename).
+    ///
     public func mimeType(_ value: String) -> Upload { with { $0.mimeType = value } }
 
-    /// Register a middleware hook for this upload (observes/vetoes the `upload` op).
+    ///
     public func addMiddleware(_ hook: @escaping MiddlewareFn) -> Upload {
         with { $0.middleware.append(hook) }
     }
 
-    /// Clone-on-chain helper (ADR-066 SWIFT-004): copy, mutate, return.
+    ///
     private func with(_ mutate: (inout Upload) -> Void) -> Upload {
         var copy = self
         mutate(&copy)
         return copy
     }
 
-    /// Upload the configured file and return its `File` handle.
+    ///
     public func run() async throws -> File {
         let hasPath = !path.isEmpty
         let hasBytes = !bytes.isEmpty
@@ -64,9 +64,9 @@ public struct Upload: Sendable {
         let data: Data
         let name: String
         if hasPath {
-            // Reject pathologically large files before allocating — well above
-            // any provider's real upload limit, but blocks a trivial OOM via
-            // path("/dev/zero"). Mirrors Go's guard.
+            //
+            //
+            //
             let maxUploadBytes = 1 << 30 // 1GB
             if let size = try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int,
                size > maxUploadBytes {
@@ -92,10 +92,10 @@ public struct Upload: Sendable {
         )
     }
 
-    // MARK: - Transport (fire + multipart)
+    //
 
-    /// Fires the `upload` op around the multipart POST (mirrors Rust
-    /// `upload_with_data` — pre/post middleware with duration + error capture).
+    ///
+    ///
     static func uploadData(
         provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient,
         data: Data, filename: String, mime: String, middleware: [MiddlewareFn]
@@ -128,7 +128,7 @@ public struct Upload: Sendable {
         }
     }
 
-    /// The multipart POST + response-path parse (mirrors Rust `upload_file_inner`).
+    ///
     private static func send(
         config: ProviderSpec, upload: FileUploadDef, apiKey: String,
         baseURLOverride: String?, http: HTTPClient,
@@ -157,7 +157,7 @@ public struct Upload: Sendable {
             }
         }
 
-        // Google carries the filename as a JSON metadata form field + a protocol header.
+        //
         if config.chatWireShape == "ChatGoogle" {
             let metadata = JSONValue.object([
                 ("file", .object([("display_name", .string(filename))]))
@@ -185,9 +185,9 @@ public struct Upload: Sendable {
         return file
     }
 
-    /// Extension-based MIME fallback when `mimeType()` is unset (mirrors Go's
-    /// `detectMimeType`). The dominant provider (Anthropic) overrides `mimeType`
-    /// from the response anyway; this sets the request part's Content-Type.
+    ///
+    ///
+    ///
     static func detectMimeType(_ filename: String) -> String {
         switch (filename as NSString).pathExtension.lowercased() {
         case "pdf": return "application/pdf"

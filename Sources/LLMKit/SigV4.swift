@@ -1,16 +1,16 @@
 import Foundation
 import CryptoKit
 
-/// AWS Signature Version 4 signing for Bedrock (ADR SigV4 auth scheme). A
-/// port of `go/sigv4.go`, using CryptoKit for HMAC-SHA256 / SHA256 so the SDK
-/// stays dependency-free. Returns the headers to add to the outbound request;
-/// the timestamp is the only non-deterministic signing input, so the CR-002
-/// wire driver (`SigV4WireTests`) injects a frozen clock and asserts the
-/// canonical request / string-to-sign / Authorization byte-identically against
-/// the shared golden at `codegen/testdata/wire/sigv4/v1/`.
+///
+///
+///
+///
+///
+///
+///
 enum SigV4 {
-    /// The intermediate signing artifacts. Production callers use only
-    /// `headers`; the wire driver asserts the other three against the golden.
+    ///
+    ///
     struct Parts {
         let headers: [(String, String)]
         let canonicalRequest: String
@@ -18,10 +18,10 @@ enum SigV4 {
         let authorization: String
     }
 
-    /// Compute the SigV4 headers for a request. `contentType` is folded into
-    /// the signed set only when non-empty: AWS recomputes the canonical request
-    /// from the headers actually received, so signing a Content-Type on a
-    /// request that never sends one (a bodyless GET) is a guaranteed 403.
+    ///
+    ///
+    ///
+    ///
     static func sign(
         method: String,
         url: URL,
@@ -41,8 +41,8 @@ enum SigV4 {
         ).headers
     }
 
-    /// `sign` with the artifacts exposed (CR-002 clock seam): a fixed `now`
-    /// makes the whole signature chain reproducible for the cross-SDK golden.
+    ///
+    ///
     static func signParts(
         method: String,
         url: URL,
@@ -61,13 +61,13 @@ enum SigV4 {
         let datestamp = String(format: "%04d%02d%02d", comps.year!, comps.month!, comps.day!)
         let amzdate = String(format: "%@T%02d%02d%02dZ", datestamp, comps.hour!, comps.minute!, comps.second!)
 
-        // Host includes an explicit non-default port (Bedrock over https:443
-        // has none, so this is a no-op there but faithful to Go's req.Host).
+        //
+        //
         let host = url.port.map { "\(url.host ?? ""):\($0)" } ?? (url.host ?? "")
         let payloadHash = sha256Hex(body)
 
-        // The signed header set (lowercased names, sorted). Values are trimmed.
-        // content-type only when the request actually sends one (see `sign`).
+        //
+        //
         var signed: [(String, String)] = [
             ("host", host),
             ("x-amz-content-sha256", payloadHash),
@@ -84,9 +84,9 @@ enum SigV4 {
         let signedHeaders = signed.map(\.0).joined(separator: ";")
         let canonicalHeaders = signed.map { "\($0.0):\($0.1.trimmingCharacters(in: .whitespaces))\n" }.joined()
 
-        // Sign the percent-ENCODED path (the bytes on the wire), not Foundation's
-        // decoded `url.path`, so an encoded path segment (e.g. a Bedrock ARN)
-        // canonicalizes to what the server receives (mirror of Go's EscapedPath).
+        //
+        //
+        //
         let encodedPath = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath ?? ""
         let canonicalURI = encodedPath.isEmpty ? "/" : encodedPath
         let canonicalQuery = canonicalQueryString(url)

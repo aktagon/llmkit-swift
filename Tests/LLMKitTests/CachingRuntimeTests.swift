@@ -1,9 +1,9 @@
 import XCTest
 @testable import LLMKit
 
-/// Behavior tests for the resource-caching TTL knob: `cacheTtl(_:)` on both
-/// the Text builder and the Agent must reach the Google cache-create body as
-/// `"<seconds>s"`, and the main request must reference the created cache.
+///
+///
+///
 final class CachingRuntimeTests: XCTestCase {
     private func mockClient() -> Client {
         Client(provider: .google, apiKey: "key", session: MockURLProtocol.makeSession())

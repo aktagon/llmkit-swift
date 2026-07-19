@@ -1,11 +1,11 @@
 import Foundation
 @testable import LLMKit
 
-/// Locates repo-root artifacts (shared wire goldens, driver output) from a test
-/// file's compile-time path, independent of the process working directory.
+///
+///
 enum TestPaths {
-    /// The monorepo root: `.../swift/Tests/LLMKitTests/<file>` is four levels
-    /// below it.
+    ///
+    ///
     static func repoRoot(from file: StaticString = #filePath) -> URL {
         URL(fileURLWithPath: "\(file)")
             .deletingLastPathComponent() // LLMKitTests
@@ -14,15 +14,15 @@ enum TestPaths {
             .deletingLastPathComponent() // repo root
     }
 
-    /// A path under `codegen/testdata/`.
+    ///
     static func testdata(_ relativePath: String) -> URL {
         repoRoot()
             .appendingPathComponent("codegen/testdata")
             .appendingPathComponent(relativePath)
     }
 
-    /// Write a request-wire artifact to `target/wire/request/<fixture>/swift.json`,
-    /// mirroring the Rust driver's `rust.json` output.
+    ///
+    ///
     static func writeRequestArtifact(fixture: String, body: JSONValue) throws {
         let directory = repoRoot()
             .appendingPathComponent("target/wire/request")
@@ -32,10 +32,10 @@ enum TestPaths {
         try Data(body.serialized().utf8).write(to: file)
     }
 
-    /// Write a request-wire HEADER artifact to
-    /// `target/wire/request/<fixture>/swift.headers.json` (lowercased keys), the
-    /// per-SDK companion the comparator subset-matches against a fixture's
-    /// `<fixture>.headers.json` golden (HANDOFF-028 / BUG-017).
+    ///
+    ///
+    ///
+    ///
     static func writeRequestHeaders(fixture: String, headers: [String: String]) throws {
         let directory = repoRoot()
             .appendingPathComponent("target/wire/request")
@@ -46,8 +46,8 @@ enum TestPaths {
         try Data(JSONValue.object(pairs).serialized().utf8).write(to: file)
     }
 
-    /// Write a response-wire artifact to `target/wire/response/<shape>/swift.json`,
-    /// mirroring the Rust driver's `rust.json` output.
+    ///
+    ///
     static func writeResponseArtifact(shape: String, projection: JSONValue) throws {
         let directory = repoRoot()
             .appendingPathComponent("target/wire/response")
@@ -57,9 +57,9 @@ enum TestPaths {
         try Data(projection.serialized().utf8).write(to: file)
     }
 
-    /// Write a telemetry-wire artifact to
-    /// `target/wire/telemetry/<fixture>/swift.json` (the OTLP payload verbatim),
-    /// mirroring the Rust driver's `rust.json` output.
+    ///
+    ///
+    ///
     static func writeTelemetryArtifact(fixture: String, payload: String) throws {
         let directory = repoRoot()
             .appendingPathComponent("target/wire/telemetry")
@@ -69,9 +69,9 @@ enum TestPaths {
         try Data(payload.utf8).write(to: file)
     }
 
-    /// Write a catalogue request-URL artifact to
-    /// `target/wire/catalogue/<case>/swift.json` (the `{method, url, headers}`
-    /// projection), mirroring the Rust driver's `rust.json` output.
+    ///
+    ///
+    ///
     static func writeCatalogueArtifact(case caseName: String, projection: JSONValue) throws {
         let directory = repoRoot()
             .appendingPathComponent("target/wire/catalogue")
@@ -81,9 +81,9 @@ enum TestPaths {
         try Data(projection.serialized().utf8).write(to: file)
     }
 
-    /// Write a SigV4-wire artifact to `target/wire/sigv4/<fixture>/swift.json`
-    /// (the `{canonicalRequest, stringToSign, authorization}` projection),
-    /// mirroring the Go driver's `go.json` output (CR-002).
+    ///
+    ///
+    ///
     static func writeSigV4Artifact(fixture: String, projection: JSONValue) throws {
         let directory = repoRoot()
             .appendingPathComponent("target/wire/sigv4")
@@ -93,9 +93,9 @@ enum TestPaths {
         try Data(projection.serialized().utf8).write(to: file)
     }
 
-    /// Write a lifecycle-wire artifact to
-    /// `target/wire/lifecycle/<fixture>/swift.json` (the normalized JobStatus
-    /// projection), mirroring the Rust driver's `rust.json` output.
+    ///
+    ///
+    ///
     static func writeLifecycleArtifact(fixture: String, projection: JSONValue) throws {
         let directory = repoRoot()
             .appendingPathComponent("target/wire/lifecycle")

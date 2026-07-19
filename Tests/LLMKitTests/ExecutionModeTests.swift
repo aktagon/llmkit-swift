@@ -1,20 +1,20 @@
 import XCTest
 @testable import LLMKit
 
-/// Behavior tests for the Phase-3 execution modes beyond the wire goldens: the
-/// full agent tool loop (request -> tool call -> tool run -> follow-up request ->
-/// text) and the batch submit+wait round-trip (multipart upload -> create ->
-/// poll -> result). Real domain values, `actual == expected`.
+///
+///
+///
+///
 final class ExecutionModeTests: XCTestCase {
     private func mockClient(_ provider: ProviderName) -> Client {
         Client(provider: provider, apiKey: "key", session: MockURLProtocol.makeSession())
     }
 
-    // MARK: - Agent tool loop
+    //
 
     func testAgentRunsToolThenAnswers() async throws {
         MockURLProtocol.reset()
-        // Turn 1: the model asks to call get_weather; turn 2: it answers.
+        //
         let toolCall = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"Helsinki\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}"
         let answer = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"It is sunny in Helsinki.\"}}],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":6}}"
         MockURLProtocol.responseSequence = [Data(toolCall.utf8), Data(answer.utf8)]
@@ -33,13 +33,13 @@ final class ExecutionModeTests: XCTestCase {
         let response = try await mockClient(.openai).agent().addTool(tool).prompt("What is the weather in Helsinki?")
 
         XCTAssertEqual(response.text, "It is sunny in Helsinki.")
-        // Usage accumulates across both turns.
+        //
         XCTAssertEqual(response.usage.input, 18)
         XCTAssertEqual(response.usage.output, 11)
-        // The tool actually ran with the model-supplied argument.
+        //
         XCTAssertEqual(receivedCity, "Helsinki")
 
-        // The follow-up (second) request carried the tool result back.
+        //
         let secondBody = try JSONValue.parse(String(decoding: XCTUnwrap(MockURLProtocol.capturedBody), as: UTF8.self))
         guard case let .array(messages)? = secondBody.member("messages") else {
             return XCTFail("second request has no messages array")
@@ -51,8 +51,8 @@ final class ExecutionModeTests: XCTestCase {
 
     func testAgentStopsAtMaxToolIterations() async throws {
         MockURLProtocol.reset()
-        // The model asks for the tool on every turn (the last sequence entry
-        // repeats), so a cap of 2 must abort the loop after two iterations.
+        //
+        //
         let toolCall = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\\\"Helsinki\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}"
         MockURLProtocol.responseSequence = [Data(toolCall.utf8)]
 
@@ -72,7 +72,7 @@ final class ExecutionModeTests: XCTestCase {
         }
     }
 
-    // MARK: - Batch submit + wait round-trip
+    //
 
     func testBatchSubmitAndWait() async throws {
         MockURLProtocol.reset()
@@ -94,11 +94,11 @@ final class ExecutionModeTests: XCTestCase {
         XCTAssertEqual(responses.first?.usage.output, 1)
     }
 
-    /// Review finding #1: an inline Anthropic batch whose per-item bodies carry a
-    /// structured-output schema emits `output_format` in each item — the batch
-    /// CREATE request MUST carry the composed `anthropic-beta`, else the provider
-    /// 400s. The beta lives on the item's build headers, not on the batch auth
-    /// headers, so it has to be lifted onto the CREATE request.
+    ///
+    ///
+    ///
+    ///
+    ///
     func testInlineBatchCreateCarriesAnthropicBeta() async throws {
         MockURLProtocol.reset()
         MockURLProtocol.responseBody = Data("{\"id\":\"batch_1\"}".utf8)
@@ -110,7 +110,7 @@ final class ExecutionModeTests: XCTestCase {
 
         XCTAssertEqual(job.handle.id, "batch_1")
         XCTAssertEqual(MockURLProtocol.capturedHeaders["anthropic-beta"], "structured-outputs-2025-11-13")
-        // The item body actually carries the format field the beta gates.
+        //
         let createBody = try JSONValue.parse(String(decoding: XCTUnwrap(MockURLProtocol.capturedBody), as: UTF8.self))
         guard case let .array(requests)? = createBody.member("requests"),
               let params = requests.first?.member("params") else {
@@ -119,11 +119,11 @@ final class ExecutionModeTests: XCTestCase {
         XCTAssertNotNil(params.member("output_format"))
     }
 
-    // MARK: - Option validation (loud rejection of unsupported knobs)
+    //
 
-    /// OpenAI's supported-options table has no top_k, so setting topK must throw
-    /// a validation error naming the wire field instead of silently dropping it
-    /// (mirror of Go's validateOptions).
+    ///
+    ///
+    ///
     func testUnsupportedTopKRejectedLoudly() async throws {
         MockURLProtocol.reset()
         do {
@@ -136,8 +136,8 @@ final class ExecutionModeTests: XCTestCase {
         }
     }
 
-    /// Anthropic declares top_k, so the same knob passes validation and lands
-    /// on the wire.
+    ///
+    ///
     func testSupportedTopKPassesValidation() async throws {
         MockURLProtocol.reset()
         MockURLProtocol.responseBody = Data(
@@ -152,9 +152,9 @@ final class ExecutionModeTests: XCTestCase {
         XCTAssertEqual(body.member("top_k"), .int(40))
     }
 
-    /// An effort token outside the provider's allowedValues whitelist rejects
-    /// with the Go-parity invalid-value message (anthropic allows
-    /// low/medium/high/xhigh/max).
+    ///
+    ///
+    ///
     func testReasoningEffortValueOutsideWhitelistRejected() async throws {
         MockURLProtocol.reset()
         do {
@@ -168,11 +168,11 @@ final class ExecutionModeTests: XCTestCase {
         }
     }
 
-    // MARK: - Stream protocol guard (ADR-055)
+    //
 
-    /// A non-default chat protocol on the stream terminal must reject loudly —
-    /// silently sending the default Chat Completions envelope after an explicit
-    /// opt-in is a footgun (parity with the batch terminal's guard).
+    ///
+    ///
+    ///
     func testStreamRejectsNonDefaultProtocol() async throws {
         MockURLProtocol.reset()
         do {

@@ -1,36 +1,36 @@
 import Foundation
 
-/// A vision-input image attached to a text-generation request (ADR-060). The
-/// builder's `.image(mime, data)` lowers into this carrier as a base64 data URI;
-/// the transform emits it as the provider's native image block. Mirror of Rust's
-/// `InputImage`.
+///
+///
+///
+///
 struct InputImage: Sendable, Equatable {
     var url: String
     var mimeType: String
     var detail: String
 }
 
-/// A reference to an uploaded file attached to a text-generation request
-/// (ADR-060). `id` addresses an OpenAI/Anthropic uploaded file; `uri`/`mimeType`
-/// address a Google `file_data`. Mirror of the fields Rust's `File` carries.
+///
+///
+///
 struct FileRef: Sendable, Equatable {
     var id: String
     var uri: String
     var mimeType: String
 }
 
-/// Request-body message + tool transforms, selected by the effective
-/// `chatWireShape` (ADR-047 / ADR-055 discriminator) and the generated
-/// `ToolCallDef`, NOT by provider name — a file-by-file port of Rust's
-/// `transforms.rs`. Covers the multi-turn message array (text, media, tool-call,
-/// and tool-result turns) for the four chat wire shapes plus tool-definition
-/// serialization.
+///
+///
+///
+///
+///
+///
 enum Transforms {
-    /// The internal message representation: a sum that is *exactly one of* text,
-    /// media (text + image/file parts), tool-calls, or tool-result (ADR-026
-    /// PIPE-007). The public surface is a flat product that could encode an
-    /// illegal multi-carrier combination; this enum cannot, so the transforms
-    /// dispatch with an exhaustive switch.
+    ///
+    ///
+    ///
+    ///
+    ///
     enum Msg: Sendable {
         case text(role: String, text: String)
         case media(role: String, text: String, images: [InputImage], files: [FileRef])
@@ -38,16 +38,16 @@ enum Transforms {
         case result(ToolResult)
     }
 
-    /// True when any turn carries a file reference — drives the Anthropic
-    /// files-api beta header (BUG-017).
+    ///
+    ///
     static func hasFileParts(_ msgs: [Msg]) -> Bool {
         msgs.contains { if case let .media(_, _, _, files) = $0 { return !files.isEmpty }; return false }
     }
 
-    // MARK: - Message array
+    //
 
-    /// Append the provider-specific message array to `body`, built from the
-    /// internal message list + an optional system turn.
+    ///
+    ///
     static func applyMessageShape(
         body: inout [(String, JSONValue)],
         msgs: [Msg],
@@ -64,10 +64,10 @@ enum Transforms {
         }
     }
 
-    /// The shared flat message array used by both the Chat Completions
-    /// ("messages") and Responses ("input") envelopes. A leading system turn is
-    /// emitted only for the MessageInArray placement; Bedrock wraps text content
-    /// in a `[{text}]` block.
+    ///
+    ///
+    ///
+    ///
     private static func flatMessageArray(
         msgs: [Msg],
         system: String?,
@@ -111,11 +111,11 @@ enum Transforms {
         return messages
     }
 
-    /// The flat (OpenAI / Anthropic / Responses) content-parts array for a media
-    /// turn: files first, then images, then the text — the fixed order the wire
-    /// goldens pin. Anthropic uses `document`/`image` blocks with a `source`;
-    /// OpenAI uses `file`/`image_url` blocks. Mirror of Rust's
-    /// `build_flat_content_parts`.
+    ///
+    ///
+    ///
+    ///
+    ///
     private static func flatContentParts(
         images: [InputImage], files: [FileRef], text: String, wireShape: String
     ) -> [JSONValue] {
@@ -167,9 +167,9 @@ enum Transforms {
         return parts
     }
 
-    /// The Google `parts` array for a media turn: `file_data` for files,
-    /// `inline_data` for data-URI images, then the text. Mirror of Rust's
-    /// `build_google_parts`.
+    ///
+    ///
+    ///
     private static func googleParts(images: [InputImage], files: [FileRef], text: String) -> [JSONValue] {
         var parts: [JSONValue] = []
         for file in files {
@@ -189,9 +189,9 @@ enum Transforms {
         return parts
     }
 
-    /// The Bedrock Converse content array for a media turn: `image` blocks (files
-    /// are unsupported here), then the text. Mirror of Rust's
-    /// `build_bedrock_content_parts`.
+    ///
+    ///
+    ///
     private static func bedrockContentParts(images: [InputImage], text: String) -> [JSONValue] {
         var parts: [JSONValue] = []
         for image in images {
@@ -206,8 +206,8 @@ enum Transforms {
         return parts
     }
 
-    /// Split a `data:<mime>;base64,<data>` URI into its mime type and payload.
-    /// A non-data URI returns ("", url).
+    ///
+    ///
     private static func parseDataURI(_ url: String) -> (mime: String, data: String) {
         guard url.hasPrefix("data:"), let comma = url.firstIndex(of: ",") else { return ("", url) }
         let header = url[url.index(url.startIndex, offsetBy: 5)..<comma] // after "data:"
@@ -215,7 +215,7 @@ enum Transforms {
         return (mime, String(url[url.index(after: comma)...]))
     }
 
-    /// Derive the Converse `format` token from a MIME type (image/png -> "png").
+    ///
     private static func bedrockImageFormat(_ mime: String) -> String {
         if let slash = mime.lastIndex(of: "/") { return String(mime[mime.index(after: slash)...]) }
         return mime
@@ -226,9 +226,9 @@ enum Transforms {
         system: String?,
         config: ProviderSpec
     ) -> [JSONValue] {
-        // Google identifies a tool result by function NAME, but ToolResult
-        // carries only tool_use_id. Recover id->name from the preceding call
-        // turns (which always precede their result in a valid history).
+        //
+        //
+        //
         var idToName: [String: String] = [:]
         var contents: [JSONValue] = []
         for msg in msgs {
@@ -256,10 +256,10 @@ enum Transforms {
         return contents
     }
 
-    // MARK: - Tool definitions
+    //
 
-    /// Serialize the tool definitions into the provider-specific wire field,
-    /// selected by `chatWireShape` + the generated `ToolCallDef.argsFormat`.
+    ///
+    ///
     static func applyToolDefs(
         _ body: inout [(String, JSONValue)],
         _ config: ProviderSpec,
@@ -325,7 +325,7 @@ enum Transforms {
         JSONObject.set(&body, "toolConfig", .object([("tools", .array(defs))]))
     }
 
-    // MARK: - Tool-call / tool-result turn messages
+    //
 
     private static func toolCallInput(_ call: ToolCall) -> JSONValue {
         call.input ?? .object([])
@@ -408,10 +408,10 @@ enum Transforms {
         ])
     }
 
-    // MARK: - Tool-call extraction (response side)
+    //
 
-    /// Extract the tool calls the model issued in the raw response, selected by
-    /// `chatWireShape` + `ToolCallDef.argsFormat`.
+    ///
+    ///
     static func extractToolCalls(_ raw: JSONValue, _ config: ProviderSpec) -> [ToolCall] {
         if config.chatWireShape == "ChatBedrock" {
             return extractBedrockToolCalls(raw)
@@ -473,17 +473,17 @@ enum Transforms {
         }
     }
 
-    // MARK: - Helpers
+    //
 
-    /// The value if it is an object, else an empty object — for a tool-call
-    /// input that may be absent or non-object.
+    ///
+    ///
     private static func objectOrEmpty(_ value: JSONValue?) -> JSONValue {
         if let value, case .object = value { return value }
         return .object([])
     }
 
-    /// Translate a canonical role to the provider's wire role (identity when the
-    /// provider declares no mapping).
+    ///
+    ///
     static func mapRole(_ role: String, _ config: ProviderSpec) -> String {
         config.roleMappings[role] ?? role
     }

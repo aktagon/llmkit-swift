@@ -1,16 +1,16 @@
 import XCTest
 @testable import LLMKit
 
-/// Request-wire driver (ADR-028 direction): build each ChatCompletion request
-/// through the full SDK stack, capture the outbound bytes via the injected mock
-/// session, and assert the body is value-equal to the SAME shared golden at
-/// codegen/testdata/wire/request/v1/<fixture>.json that the other four SDKs
-/// assert. Each test also drops target/wire/request/<fixture>/swift.json so the
-/// cross-SDK comparator (codegen/test_cross_sdk_request_wire.py) can enroll
-/// Swift. Inputs are the SAME canonical values the other drivers feed (single-
-/// sourced in ontology/wire-fixtures.ttl; hand-mirrored here — test drivers are
-/// never generated). Phase 2 = ChatCompletion; media Parts / tools / batch /
-/// SigV4 / media capabilities are driven in later phases.
+///
+///
+///
+///
+///
+///
+///
+///
+///
+///
 final class RequestWireTests: XCTestCase {
     private func client(_ provider: ProviderName) -> Client {
         MockURLProtocol.reset()
@@ -32,7 +32,7 @@ final class RequestWireTests: XCTestCase {
         XCTAssertEqual(body, try JSONValue.parse(goldenText), "\(fixture) body differs from shared golden")
     }
 
-    // MARK: - Options (one per model family; the double-serialization surface)
+    //
 
     func testOptionsOpenAIGPT4O() async throws {
         _ = try await client(.openai).text
@@ -93,7 +93,7 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("options-google-gemini25", try capturedBody())
     }
 
-    // MARK: - OpenAI-compat fleet
+    //
 
     func testWorkersAI() async throws {
         _ = try await client(.workersai).baseURL("https://mock.local/v1").text
@@ -102,7 +102,7 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("workersai", try capturedBody())
     }
 
-    // MARK: - Responses protocol (ADR-055)
+    //
 
     func testResponsesOpenAI() async throws {
         _ = try await client(.openai).text
@@ -111,7 +111,7 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("responses-openai", try capturedBody())
     }
 
-    // MARK: - Structured output (schema normalization)
+    //
 
     private static let schemaFlat =
         "{\"type\":\"object\",\"properties\":{\"color\":{\"type\":\"string\"}},\"additionalProperties\":false}"
@@ -136,9 +136,9 @@ final class RequestWireTests: XCTestCase {
         _ = try await client(.anthropic).text
             .model("claude-sonnet-4-6").schema(Self.schemaFlat).prompt(promptFlat)
         try assertGolden("structured-output-anthropic", try capturedBody())
-        // Load-bearing headers: without the structured-output beta Anthropic
-        // 400s on output_format. Golden-locked across all four SDKs via the
-        // companion structured-output-anthropic.headers.json.
+        //
+        //
+        //
         XCTAssertEqual(MockURLProtocol.capturedHeaders["anthropic-beta"], "structured-outputs-2025-11-13")
         try TestPaths.writeRequestHeaders(fixture: "structured-output-anthropic", headers: MockURLProtocol.capturedHeaders)
     }
@@ -160,14 +160,14 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("structured-output-nested-anthropic", try capturedBody())
     }
 
-    // MARK: - Streaming (BUG-028: stream_options.include_usage on the body)
+    //
 
     func testStreamOpenAI() async throws {
         _ = try? await client(.openai).text.model("gpt-4o-mini").stream("Say hello.") { _ in }
         try assertGolden("stream-openai", try capturedBody())
     }
 
-    // MARK: - Agent tool definitions (per wire shape)
+    //
 
     private static let toolSchema =
         "{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}"
@@ -203,9 +203,9 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("tooldef-bedrock", try capturedBody())
     }
 
-    // MARK: - Media Parts on the text path (ADR-060: vision image + file refs)
+    //
 
-    /// The shared 1x1 PNG the other SDKs feed, decoded to bytes for `.image`.
+    ///
     private static let imageBase64 =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4YWQEAALyAS2saifrAAAAAElFTkSuQmCC"
     private func imageBytes() throws -> Data { try XCTUnwrap(Data(base64Encoded: Self.imageBase64)) }
@@ -251,8 +251,8 @@ final class RequestWireTests: XCTestCase {
             .model("claude-opus-4-8").file("file_011CMZq8h5VnVe8jL3qK7p2R")
             .prompt("Summarize the attached document in three sentences.")
         try assertGolden("anthropic-text-document", try capturedBody())
-        // BUG-017: a file-referencing Anthropic request must carry the files-api
-        // beta; golden-locked across all SDKs via anthropic-text-document.headers.json.
+        //
+        //
         XCTAssertEqual(MockURLProtocol.capturedHeaders["anthropic-beta"], "files-api-2025-04-14")
         try TestPaths.writeRequestHeaders(fixture: "anthropic-text-document", headers: MockURLProtocol.capturedHeaders)
     }
@@ -263,8 +263,8 @@ final class RequestWireTests: XCTestCase {
             .model("claude-opus-4-8").schema(schema).file("file_011CMZq8h5VnVe8jL3qK7p2R")
             .prompt("Summarize the attached document as structured data.")
         try assertGolden("anthropic-schema-document", try capturedBody())
-        // BUG-017 compose path: the structured-output beta and the files-api beta
-        // compose into one comma-separated anthropic-beta, deduped.
+        //
+        //
         XCTAssertEqual(
             MockURLProtocol.capturedHeaders["anthropic-beta"],
             "structured-outputs-2025-11-13,files-api-2025-04-14"
@@ -281,12 +281,12 @@ final class RequestWireTests: XCTestCase {
             .image("image/png", try imageBytes())
             .batch("Summarize the attached document and describe the image in one sentence.")
         try assertGolden("batch-multimodal-anthropic", try capturedBody())
-        // The batch CREATE request lifts the per-item files-api beta (BUG-017).
+        //
         XCTAssertEqual(MockURLProtocol.capturedHeaders["anthropic-beta"], "files-api-2025-04-14")
         try TestPaths.writeRequestHeaders(fixture: "batch-multimodal-anthropic", headers: MockURLProtocol.capturedHeaders)
     }
 
-    // MARK: - Caching (Anthropic explicit cache_control on the system prefix)
+    //
 
     private static let cachingSystem = "a long stable system prefix"
     private static let cachingPrompt = "hi"
@@ -305,15 +305,15 @@ final class RequestWireTests: XCTestCase {
 
     func testCachingBatchAnthropic() async throws {
         let c = client(.anthropic)
-        // The batch CREATE response must carry an id so submit does not throw;
-        // the assertion is on the captured CREATE request body, not the reply.
+        //
+        //
         MockURLProtocol.responseBody = Data("{\"id\":\"batch_1\"}".utf8)
         _ = try await c.text.system(Self.cachingSystem).caching().batch(Self.cachingPrompt)
         try assertGolden("caching-batch-anthropic", try capturedBody())
     }
 
-    // MARK: - Image generation (JSON bodies only; multipart edits are a WIRE-008
-    // documented exclusion). Inputs mirror the WIRE_IMAGE_* wire_inputs constants.
+    //
+    //
 
     func testImageGenGoogleFlash() async throws {
         _ = try await client(.google).image
@@ -352,15 +352,15 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("image-edit-google-flash", try capturedBody())
     }
 
-    // MARK: - Speech generation (TTS). Inputs mirror the WIRE_SPEECH_* wire_inputs
-    // constants; the two shapes are the flat-JSON Inworld body (Basic auth) and
-    // the flat-JSON OpenAI body.
+    //
+    //
+    //
 
     func testSpeechInworld() async throws {
         let c = client(.inworld)
-        // The base64Envelope parser rejects a bodyless 2xx since HANDOFF-036 A5,
-        // so this driver (like the other SDKs' wire drivers) feeds a valid
-        // envelope; the assertion is on the captured request bytes.
+        //
+        //
+        //
         MockURLProtocol.responseBody = Data("{\"audioContent\":\"UklGRg==\"}".utf8)
         _ = try await c.speech
             .model("inworld-tts-2").voice("Dennis")
@@ -375,16 +375,16 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("speech-openai", try capturedBody())
     }
 
-    // MARK: - Video generation (ADR-034; asynchronous submit). The wire suite
-    // asserts ONLY the submit body — `submit(prompt)` performs the submit POST,
-    // the mock answers with the provider's submit-response handle id so submit
-    // returns a VideoJob (discarded), and only the captured outbound bytes are
-    // asserted. Inputs mirror the WIRE_VIDEO_* wire_inputs constants. The canned
-    // response carries every provider's handle field (mirror of the Rust driver's
-    // capture_request_body): request_id / task_id / name / invocationArn /
-    // output.task_id / Resp.video_id.
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
     private static let videoSubmitResponse = Data(
-        #"{"request_id":"vid_test","task_id":"vid_test","id":"vid_test","name":"models/veo-test/operations/op_test","invocationArn":"arn:test:async-invoke/op_test","output":{"task_id":"vid_test","task_status":"PENDING"},"Resp":{"video_id":318633193768896}}"#.utf8
+        #
     )
 
     private func videoClient(_ provider: ProviderName) -> Client {
@@ -394,7 +394,7 @@ final class RequestWireTests: XCTestCase {
         return Client(provider: provider, apiKey: "key", session: MockURLProtocol.makeSession())
     }
 
-    // VID-007: Grok video-submit body {model, prompt}.
+    //
     func testVideoGrok() async throws {
         _ = try await videoClient(.grok).video
             .model("grok-imagine-video")
@@ -402,8 +402,8 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-grok", try capturedBody())
     }
 
-    // BUG-010: Grok image-to-video submit body {model, prompt, image:{url}} — the
-    // seed frame inlines as a data URL at image.url (the Grok image-edit encoding).
+    //
+    //
     func testVideoGrokI2V() async throws {
         _ = try await videoClient(.grok).video
             .model("grok-imagine-video")
@@ -412,7 +412,7 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-grok-i2v", try capturedBody())
     }
 
-    // ADR-034 fan-out: Zhipu CogVideoX shares the {model, prompt} arm.
+    //
     func testVideoZhipu() async throws {
         _ = try await videoClient(.zhipu).video
             .model("cogvideox-3")
@@ -420,7 +420,7 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-zhipu", try capturedBody())
     }
 
-    // ADR-034 fan-out: Vidu (Shengshu) shares the {model, prompt} arm.
+    //
     func testVideoVidu() async throws {
         _ = try await videoClient(.vidu).video
             .model("viduq3-pro")
@@ -428,9 +428,9 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-vidu", try capturedBody())
     }
 
-    // ADR-034 fan-out: PixVerse's five-field body {model, prompt, duration,
-    // quality, aspect_ratio}. The per-request Ai-trace-id header is a runtime UUID
-    // (asserted in the VideoTests unit test, not the golden).
+    //
+    //
+    //
     func testVideoPixVerse() async throws {
         _ = try await videoClient(.pixverse).video
             .model("v4.5")
@@ -438,7 +438,7 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-pixverse", try capturedBody())
     }
 
-    // ADR-034 fan-out: Together shares the {model, prompt} arm.
+    //
     func testVideoTogether() async throws {
         _ = try await videoClient(.together).video
             .model("minimax/video-01-director")
@@ -446,9 +446,9 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-together", try capturedBody())
     }
 
-    // ADR-034 fan-out: Qwen (DashScope) nests the prompt under {model,
-    // input:{prompt}} and requires the load-bearing X-DashScope-Async: enable
-    // header (asserted in-driver, mirror of the Anthropic beta-header assert).
+    //
+    //
+    //
     func testVideoQwen() async throws {
         _ = try await videoClient(.qwen).video
             .model("wan2.2-t2v-plus")
@@ -457,8 +457,8 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-qwen", try capturedBody())
     }
 
-    // ADR-034 fan-out: MiniMax shares the {model, prompt} arm (the two-hop result
-    // retrieve is delivery-side, covered by the unit tests).
+    //
+    //
     func testVideoMiniMax() async throws {
         _ = try await videoClient(.minimax).video
             .model("MiniMax-Hailuo-2.3")
@@ -466,8 +466,8 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-minimax", try capturedBody())
     }
 
-    // ADR-034 fan-out: Google Veo carries the model in the submit PATH, so the
-    // body is the nested {instances:[{prompt}]} with NO model field.
+    //
+    //
     func testVideoGoogleVeo() async throws {
         _ = try await videoClient(.google).video
             .model("veo-3.1-generate-preview")
@@ -475,10 +475,10 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-google", try capturedBody())
     }
 
-    // ADR-034 fan-out: AWS Bedrock Nova Reel carries the model in the BODY
-    // (modelId), nests the prompt under modelInput, and the caller S3 URI under
-    // outputDataConfig. The submit is SigV4-signed; the mock captures the outbound
-    // body regardless of the (keyless) signature.
+    //
+    //
+    //
+    //
     func testVideoBedrock() async throws {
         withBedrockEnv()
         _ = try await videoClient(.bedrock).video
@@ -488,42 +488,42 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("video-bedrock", try capturedBody())
     }
 
-    // ADR-034 delivery-mode phase: Vertex Veo's submit body is byte-identical to
-    // the Gemini Veo golden (model in the PATH, not the body).
+    //
+    //
     func testVideoVertexVeo() async throws {
-        // Vertex's base carries {location}/{project_id} placeholders (the
-        // caller-substituted seam); override with the mock base so the URL is
-        // valid (the mock intercepts regardless; only the body is asserted).
+        //
+        //
+        //
         _ = try await videoClient(.vertex).baseURL("https://mock.local").video
             .model("veo-3.1-generate-preview")
             .submit("A drone shot sweeping over snow-capped alpine peaks at sunrise")
         try assertGolden("video-vertex", try capturedBody())
     }
 
-    // MARK: - Transcription (ADR-048 / ADR-051; the [Part] container). Inputs
-    // mirror the WIRE_TRANSCRIPTION_* wire_inputs constants.
+    //
+    //
 
     private static let transcriptionAudioURL = "https://storage.example.com/meeting-2026-06-24.mp3"
     private static let transcriptionOpenAIModel = "whisper-1"
     private static let transcriptionOpenAIMime = "audio/mpeg"
 
-    // ADR-048: AssemblyAI transcription submit body {audio_url}. The async
-    // TranscriptionJob is discarded; only the outbound submit bytes are asserted.
-    // The upload hop is bytes-only and is not exercised here (a URL part skips it).
+    //
+    //
+    //
     func testTranscriptionAssemblyAI() async throws {
         let c = client(.assemblyai)
-        // The submit response must carry an id so submit does not throw; the
-        // assertion is on the captured submit request body, not the reply.
+        //
+        //
         MockURLProtocol.responseBody = Data(#"{"id":"transcript_abc123"}"#.utf8)
         _ = try await c.transcription.submit([Part.audio(url: Self.transcriptionAudioURL)])
         try assertGolden("transcription-assemblyai", try capturedBody())
     }
 
-    // ADR-051: OpenAI SYNCHRONOUS transcription is the first multipart/form-data
-    // request body in the Swift SDK. The golden is the canonical multipart
-    // descriptor (OQ-3); the driver decodes its ACTUAL encoded multipart body
-    // (captured bytes + boundary from the Content-Type header) into ordered fields
-    // and asserts value-equal to the golden.
+    //
+    //
+    //
+    //
+    //
     func testTranscriptionOpenAI() async throws {
         let c = client(.openai)
         MockURLProtocol.responseBody = Data(#"{"text":"Hello world."}"#.utf8)
@@ -537,14 +537,14 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("transcription-openai", descriptor)
     }
 
-    /// Decodes an encoded `multipart/form-data` body into the canonical descriptor
-    /// the cross-SDK comparator asserts (ADR-051 OQ-3): an ordered list of form
-    /// fields. Text fields emit `{name, value}`; the file part keeps its filename +
-    /// content-type but its bytes become the fixed sentinel "<audio-bytes>". Parses
-    /// the ACTUAL captured bytes + boundary, keeping the descriptor independent of
-    /// the golden. Port of the Rust `multipart_to_descriptor` (request_wire.rs).
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
     static func multipartToDescriptor(body: Data, contentType: String) -> JSONValue {
-        // Boundary from the Content-Type header (`multipart/form-data; boundary=…`).
+        //
         var boundary = ""
         if let range = contentType.range(of: "boundary=") {
             boundary = String(contentType[range.upperBound...]).trimmingCharacters(in: .whitespaces)
@@ -553,9 +553,9 @@ final class RequestWireTests: XCTestCase {
         let delim = "--\(boundary)"
         var fields: [JSONValue] = []
         for rawSeg in text.components(separatedBy: delim) {
-            // CRLF is a single Swift grapheme cluster, so drop ONE Character (the
-            // "\r\n" cluster), never a fixed count of two — the latter would eat the
-            // following byte and corrupt the header/value split.
+            //
+            //
+            //
             var seg = rawSeg
             if seg.hasPrefix("\r\n") { seg = String(seg.dropFirst()) }
             if seg.isEmpty || seg.hasPrefix("--") { continue } // preamble or closing delimiter
@@ -589,9 +589,9 @@ final class RequestWireTests: XCTestCase {
         return .object([("_encoding", .string("multipart/form-data")), ("fields", .array(fields))])
     }
 
-    /// Pulls the quoted value following `key` (e.g. `name="model"` -> "model").
-    /// Leftmost match, so `name=` on the file part resolves the standalone field
-    /// name, not the tail of `filename=`.
+    ///
+    ///
+    ///
     private static func extractQuoted(_ haystack: String, _ key: String) -> String? {
         guard let start = haystack.range(of: key) else { return nil }
         let rest = haystack[start.upperBound...]
@@ -601,7 +601,7 @@ final class RequestWireTests: XCTestCase {
         return String(afterQuote[afterQuote.startIndex..<end])
     }
 
-    // MARK: - Bedrock Converse (SigV4 signing; body is asserted, signature is not)
+    //
 
     func testBedrockChat() async throws {
         withBedrockEnv()
@@ -611,9 +611,9 @@ final class RequestWireTests: XCTestCase {
         try assertGolden("bedrock-chat", try capturedBody())
     }
 
-    /// Bedrock SigV4 reads its region + secret key from the environment; the
-    /// access key is the client api key. Deterministic dummy values — the
-    /// signature is time-dependent and NOT asserted (only the body is).
+    ///
+    ///
+    ///
     private func withBedrockEnv() {
         setenv("AWS_REGION", "us-east-1", 1)
         setenv("AWS_SECRET_ACCESS_KEY", "test-secret", 1)

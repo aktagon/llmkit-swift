@@ -1,17 +1,17 @@
 import XCTest
 @testable import LLMKit
 
-/// Cross-SDK catalogue request-URL conformance (ADR-067 Fix B / CAT-006) — the
-/// Swift driver. The REQUEST-side sibling of ResponseWireTests (which locks the
-/// /models PARSE seam): for a fixed (provider, cursor), every SDK's
-/// catalogue-list path must assemble a byte-identical {method, url, headers}.
 ///
-/// The driver calls the SAME URL/header-assembly seam the paginate loop uses
-/// (buildCatalogueURL + appendCursor + buildCatalogueHeaders, reachable via
-/// @testable import). The cursorParam comes from the generated catalogueConfig,
-/// NOT from inputs.json — so this exercises the generated config. Drops
-/// target/wire/catalogue/<case>/swift.json for the cross-SDK comparator
-/// (codegen/test_cross_sdk_catalogue.py) and asserts value-equality in-driver.
+///
+///
+///
+///
+///
+///
+///
+///
+///
+///
 final class CatalogueWireTests: XCTestCase {
     func testCatalogueWire() throws {
         let inputsText = try String(

@@ -1,21 +1,21 @@
 import Foundation
 
-/// Batch execution mode (ADR-064) — a port of Rust's `batch.rs` onto the shared
-/// Job engine (ADR-062). `Text.batch(...)` submits and returns a `BatchJob`; the
-/// job polls the lifecycle to completion and returns the ordered `[Response]`.
 ///
-/// The generated `BatchHandle` value carries only identity (id + provider +
-/// raw) — Swift maps `llm:Provider` to `ProviderName` (Phase-1 decision), so the
-/// credential-bearing, transport-holding *live* handle is a handwritten wrapper
-/// (`BatchJob`) around it. `BatchJob.handle` is the persistable value for
-/// cross-process resume (ADR-014).
+///
+///
+///
+///
+///
+///
+///
+///
 public final class BatchJob: Sendable {
-    /// The persistable identity value (ADR-014 cross-process resume).
+    ///
     public let handle: BatchHandle
     let apiKey: String
     let http: HTTPClient
     let baseURLOverride: String?
-    /// Poll cadence for `wait` (tests shrink these via `cadence`; defaults match Rust/Go).
+    ///
     let interval: TimeInterval
     let timeout: TimeInterval
 
@@ -31,8 +31,8 @@ public final class BatchJob: Sendable {
         self.timeout = timeout
     }
 
-    /// A copy with the same identity + transport and the given poll cadence
-    /// (internal test seam).
+    ///
+    ///
     func cadence(interval: TimeInterval, timeout: TimeInterval) -> BatchJob {
         BatchJob(
             handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
@@ -40,12 +40,12 @@ public final class BatchJob: Sendable {
         )
     }
 
-    /// One normalized poll round-trip (ADR-063 POLL-001): no loop.
+    ///
     public func poll() async throws -> JobStatus<[Response]> {
         try await Job.pollOnce(try makeAdapter())
     }
 
-    /// Poll until a terminal state, returning the ordered responses.
+    ///
     public func wait() async throws -> [Response] {
         var adapter = try makeAdapter()
         adapter.lc.pollInterval = interval
@@ -62,7 +62,7 @@ public final class BatchJob: Sendable {
 }
 
 enum Batch {
-    /// Submit a batch of single-turn prompts and return the live `BatchJob`.
+    ///
     static func submit(
         config: ProviderSpec,
         apiKey: String,
@@ -100,11 +100,11 @@ enum Batch {
             ])
         case .inlineRequests:
             var items: [JSONValue] = []
-            // The per-item bodies may require a contract-bearing anthropic-beta
-            // (structured output / files) that buildAuthHeaders does not set —
-            // compose it across items and ride it onto the batch CREATE request,
-            // else a schema/file-referencing item silently drops the beta and the
-            // provider 400s (mirror of Rust batch.rs build_batch_body).
+            //
+            //
+            //
+            //
+            //
             var beta = ""
             for (index, prompt) in prompts.enumerated() {
                 var (itemBody, itemHeaders) = try RequestBuilder.buildBody(
@@ -151,10 +151,10 @@ enum Batch {
         return BatchJob(handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride)
     }
 
-    /// The per-item user turn — a media turn when the builder carried image/file
-    /// parts (ADR-060), else a plain text turn. Batch applies the builder's media
-    /// to every item (the ADR-064 `batch(prompts...)` shape carries builder-level
-    /// config uniformly).
+    ///
+    ///
+    ///
+    ///
     private static func itemMsgs(_ prompt: String, images: [InputImage], files: [FileRef]) -> [Transforms.Msg] {
         if images.isEmpty, files.isEmpty { return [.text(role: "user", text: prompt)] }
         return [.media(role: "user", text: prompt, images: images, files: files)]
@@ -206,7 +206,7 @@ enum Batch {
     }
 }
 
-/// Binds the batch capability to the Job engine's four seams.
+///
 struct BatchAdapter: JobAdapter {
     var lc: LifecycleConfig
     var config: LifecycleConfig { lc }
@@ -269,8 +269,8 @@ struct BatchAdapter: JobAdapter {
     }
 
     func result(_ body: PollBody) async throws -> [Response] {
-        // The output file ID lives in the already-decoded poll body (S1) — no
-        // redundant status GET.
+        //
+        //
         let responseBody: String
         if !lifecycle.resultFileIdPath.isEmpty {
             let fileId = body.value().stringValue(at: lifecycle.resultFileIdPath)
@@ -299,11 +299,11 @@ struct BatchAdapter: JobAdapter {
         for rawLine in data.split(separator: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.isEmpty { continue }
-            // A malformed or errored item line (e.g. Anthropic
-            // result.type=errored, which carries no result.message at the
-            // configured body path; an OpenAI line whose response is null)
-            // must not destroy the completed batch: skip it and return the
-            // successful subset, mirroring Go.
+            //
+            //
+            //
+            //
+            //
             let responseText: String
             if batch.resultBodyPath.isEmpty {
                 responseText = line

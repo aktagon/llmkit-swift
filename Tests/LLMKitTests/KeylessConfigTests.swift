@@ -1,13 +1,13 @@
 import XCTest
 @testable import LLMKit
 
-/// Phase 4h Part 1: the four media `*GenConfig` accessors are the ADR-036
-/// public-surface symbols a consumer calls at module-load — no client, no API
-/// key, no network — to derive a model menu (imageGenConfig / videoGenConfig /
-/// musicGenConfig / speechGenConfig, plus their config structs). These assert
-/// they are publicly reachable and return real catalogue data. The runtime
-/// capability tests already cover the values in depth; this pins the public
-/// keyless surface itself so a regression to `internal` fails loudly.
+///
+///
+///
+///
+///
+///
+///
 final class KeylessConfigTests: XCTestCase {
     func testImageGenConfigKeyless() {
         let cfg = imageGenConfig(.google)
@@ -37,7 +37,7 @@ final class KeylessConfigTests: XCTestCase {
         XCTAssertEqual(cfg?.genEndpoint, "/v1/audio/speech")
     }
 
-    /// A provider with no config for a capability returns nil (not a crash).
+    ///
     func testUnconfiguredProviderReturnsNil() {
         XCTAssertNil(imageGenConfig(.anthropic))
         XCTAssertNil(speechGenConfig(.google))

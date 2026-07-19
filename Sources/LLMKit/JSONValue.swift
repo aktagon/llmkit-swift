@@ -1,14 +1,14 @@
 import Foundation
 
-/// The internal JSON waist shared by both directions (ADR-066 SWIFT-002).
 ///
-/// A hand-rolled value type — deliberately NOT `Codable`, `JSONEncoder`, or
-/// `[String: Any]`. `Codable` cannot express the dynamic dotted-path body
-/// construction and root-merge the request pipeline needs; `[String: Any]`
-/// collapses `Bool` into `NSNumber` (so `true` can serialize as `1`), a
-/// wire-golden hazard. Keeping `.int(Int64)` and `.double` as distinct cases
-/// and hand-writing the serializer removes that hazard and gives token-for-token
-/// control over number representation.
+///
+///
+///
+///
+///
+///
+///
+///
 public enum JSONValue: Sendable {
     case string(String)
     case int(Int64)
@@ -16,12 +16,12 @@ public enum JSONValue: Sendable {
     case bool(Bool)
     case null
     case array([JSONValue])
-    /// Object as ordered key/value pairs so insertion order is preserved for
-    /// deterministic serialization. Equality is order-insensitive (see `==`).
+    ///
+    ///
     case object([(String, JSONValue)])
 }
 
-// MARK: - Equality (order-insensitive for objects)
+//
 
 extension JSONValue: Equatable {
     public static func == (lhs: JSONValue, rhs: JSONValue) -> Bool {
@@ -34,11 +34,11 @@ extension JSONValue: Equatable {
         case let (.array(a), .array(b)): return a == b
         case let (.object(a), .object(b)):
             guard a.count == b.count else { return false }
-            // Group values per key (order preserved within a key) so equality
-            // stays order-insensitive across distinct keys, but duplicate-key
-            // value lists must match — deduping would call
-            // [("k",1),("k",1)] equal to [("k",1),("k",2)] even though they
-            // serialize differently.
+            //
+            //
+            //
+            //
+            //
             var da: [String: [JSONValue]] = [:]
             for (key, value) in a { da[key, default: []].append(value) }
             var db: [String: [JSONValue]] = [:]
@@ -50,10 +50,10 @@ extension JSONValue: Equatable {
     }
 }
 
-// MARK: - Member / path access
+//
 
 extension JSONValue {
-    /// The value for `key` when this is an object, else nil.
+    ///
     func member(_ key: String) -> JSONValue? {
         if case let .object(pairs) = self {
             return pairs.first(where: { $0.0 == key })?.1
@@ -61,7 +61,7 @@ extension JSONValue {
         return nil
     }
 
-    /// The element at `index` when this is an array in bounds, else nil.
+    ///
     func element(at index: Int) -> JSONValue? {
         if case let .array(items) = self, index >= 0, index < items.count {
             return items[index]
@@ -69,8 +69,8 @@ extension JSONValue {
         return nil
     }
 
-    /// Navigate a dotted path (with optional `field[index]` array segments,
-    /// e.g. `choices[0].message.content`). Returns nil on any miss.
+    ///
+    ///
     func lookup(_ path: String) -> JSONValue? {
         if path.isEmpty { return nil }
         var current: JSONValue? = self
@@ -90,7 +90,7 @@ extension JSONValue {
         return current
     }
 
-    /// String at a dotted path, coercing scalars; empty string on miss.
+    ///
     public func stringValue(at path: String) -> String {
         switch lookup(path) {
         case let .string(value): return value
@@ -101,7 +101,7 @@ extension JSONValue {
         }
     }
 
-    /// Integer at a dotted path; 0 on miss.
+    ///
     public func intValue(at path: String) -> Int {
         switch lookup(path) {
         case let .int(value): return Int(value)
@@ -110,7 +110,7 @@ extension JSONValue {
         }
     }
 
-    /// Double at a dotted path; 0.0 on miss.
+    ///
     public func doubleValue(at path: String) -> Double {
         switch lookup(path) {
         case let .double(value): return value
@@ -120,12 +120,12 @@ extension JSONValue {
     }
 }
 
-// MARK: - Serialization (deterministic, never exponent form)
+//
 
 extension JSONValue {
-    /// Serialize to a compact JSON string. Object keys keep insertion order;
-    /// numbers never use exponent notation (the load-bearing wire-golden risk,
-    /// ADR-066 SWIFT-002).
+    ///
+    ///
+    ///
     func serialized() -> String {
         switch self {
         case let .string(value):
@@ -169,22 +169,22 @@ extension JSONValue {
         return out
     }
 
-    /// Render a double without exponent form. Integral values keep a trailing
-    /// `.0` to stay a JSON number distinct from an integer literal.
+    ///
+    ///
     static func encodeDouble(_ value: Double) -> String {
         if value == value.rounded(), abs(value) < 1e16 {
             return String(format: "%.1f", value)
         }
         let text = String(value)
-        // Swift's Double description does not use exponent form in the ranges
-        // this SDK emits (temperature, penalties); guard anyway.
+        //
+        //
         return text.contains("e") || text.contains("E")
             ? String(format: "%f", value)
             : text
     }
 }
 
-// MARK: - Parsing (hand-rolled, int/double preserved)
+//
 
 extension JSONValue {
     enum ParseError: Error, Equatable {
@@ -194,10 +194,10 @@ extension JSONValue {
         case invalidEscape
     }
 
-    /// Parse a JSON document into a `JSONValue`. Distinguishes integers from
-    /// doubles by the number token (a `.`/`e`/`E` marks a double), so booleans
-    /// and integers never collapse the way `JSONSerialization` + `NSNumber`
-    /// would.
+    ///
+    ///
+    ///
+    ///
     public static func parse(_ text: String) throws -> JSONValue {
         var parser = Parser(Array(text))
         let value = try parser.parseValue()
@@ -332,10 +332,10 @@ extension JSONValue {
         mutating func parseUnicodeEscape() throws -> Character {
             let code = try parseHexCodeUnit()
             if (0xD800...0xDBFF).contains(code) {
-                // High surrogate: legal only as the first half of a
-                // \uXXXX\uXXXX pair (how JSON escapes non-BMP characters).
-                // Require the literal low-surrogate escape and combine per
-                // UTF-16.
+                //
+                //
+                //
+                //
                 guard index + 2 <= scalars.count, scalars[index] == "\\", scalars[index + 1] == "u" else {
                     throw ParseError.invalidEscape
                 }
@@ -346,8 +346,8 @@ extension JSONValue {
                 guard let scalar = Unicode.Scalar(combined) else { throw ParseError.invalidEscape }
                 return Character(scalar)
             }
-            // A lone low surrogate is not a valid scalar; Unicode.Scalar
-            // rejects it here (matching strict JSON decoders).
+            //
+            //
             guard let scalar = Unicode.Scalar(code) else { throw ParseError.invalidEscape }
             return Character(scalar)
         }

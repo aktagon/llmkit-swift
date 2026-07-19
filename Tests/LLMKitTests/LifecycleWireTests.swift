@@ -1,15 +1,15 @@
 import XCTest
 @testable import LLMKit
 
-/// Cross-SDK LIFECYCLE conformance (ADR-062 slice 1). The INBOUND counterpart to
-/// the request-wire suite: given the same provider poll response, every SDK's Job
-/// engine must normalize it to the SAME terminal JobStatus. Drives one
-/// `BatchJob.poll()` round-trip against a scripted mock and drops the normalized
-/// `{state, hasResult, rawStatus, cause}` projection to
-/// `target/wire/lifecycle/<fixture>/swift.json`, value-equal to the shared golden.
+///
+///
+///
+///
+///
+///
 final class LifecycleWireTests: XCTestCase {
-    /// An OpenAI batch job (id "batch_1") pointed at the mock transport — mirror
-    /// of the Rust driver's `openai_batch_handle`.
+    ///
+    ///
     private func batchJob() -> BatchJob {
         BatchJob(
             handle: BatchHandle(id: "batch_1", provider: .openai, raw: false),
@@ -37,8 +37,8 @@ final class LifecycleWireTests: XCTestCase {
     }
 
     func testBatchSucceeded() async throws {
-        // Two-hop: the status GET reports completed + output_file_id, then the
-        // file-content GET returns one JSONL result line (OpenAI response.body).
+        //
+        //
         let jsonl = "{\"custom_id\":\"req-0\",\"response\":{\"body\":{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}}}"
         MockURLProtocol.reset()
         MockURLProtocol.responseSequence = [
@@ -50,8 +50,8 @@ final class LifecycleWireTests: XCTestCase {
     }
 
     func testBatchFailed() async throws {
-        // The status GET reports failed and there is no output_file_id — one
-        // round-trip, no result fetch.
+        //
+        //
         MockURLProtocol.reset()
         MockURLProtocol.responseSequence = [Data("{\"id\":\"batch_1\",\"status\":\"failed\"}".utf8)]
         let status = try await batchJob().poll()

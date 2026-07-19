@@ -1,8 +1,8 @@
 import Foundation
 
-/// Parses a provider chat response into the universal `Response`, reading every
-/// field from the per-provider dotted paths declared on the generated
-/// `ProviderSpec`. Mirrors Rust's `response.rs` `parse_response_shaped`.
+///
+///
+///
 enum ResponseParser {
     static func parse(config: ProviderSpec, body: Data) throws -> Response {
         guard let text = String(data: body, encoding: .utf8) else {
@@ -10,8 +10,8 @@ enum ResponseParser {
         }
         let raw = try JSONValue.parse(text)
 
-        // Cache-token and cost paths live in the generated Caching / Response
-        // fact tables (mirroring Rust), not on ProviderSpec.
+        //
+        //
         let (cacheWritePath, cacheReadPath) = cacheUsagePaths(config.name)
         let costPath = usageCostPath(config.name)
 
@@ -35,9 +35,9 @@ enum ResponseParser {
         )
     }
 
-    /// Map a non-2xx response to a typed API error, reading the message from the
-    /// provider's declared `errorMessagePath` when the body parses as JSON,
-    /// falling back to the raw body.
+    ///
+    ///
+    ///
     static func parseError(config: ProviderSpec, statusCode: Int, body: Data) -> LLMKitError {
         let raw = String(data: body, encoding: .utf8) ?? ""
         var message = raw

@@ -1,22 +1,22 @@
 import Foundation
 
-/// A `URLProtocol` that captures the outbound request body and returns a canned
-/// response, letting the request-wire driver assert the exact bytes the SDK
-/// builds without a live network call. Installed via an injected `URLSession`.
+///
+///
+///
 final class MockURLProtocol: URLProtocol {
     static var capturedBody: Data?
-    /// Every request body served, in order. `capturedBody` keeps only the last
-    /// request; multi-hop flows (resource-cache create + generate) assert the
-    /// earlier hops here.
+    ///
+    ///
+    ///
     static var capturedBodies: [Data] = []
     static var capturedHeaders: [String: String] = [:]
-    /// Every request URL served, in order (drives catalogue pagination-cursor
-    /// assertions where the sequence alone cannot prove the cursor was appended).
+    ///
+    ///
     static var capturedURLs: [String] = []
     static var responseStatusCode = 200
     static var responseBody = Data()
-    /// When set, successive requests are served the queued bodies in order (the
-    /// last entry repeats). Drives the two-hop batch poll + result fetch.
+    ///
+    ///
     static var responseSequence: [Data]?
     private static var sequenceIndex = 0
 
@@ -31,7 +31,7 @@ final class MockURLProtocol: URLProtocol {
         sequenceIndex = 0
     }
 
-    /// The body to serve for the current request, advancing the sequence.
+    ///
     private static func nextBody() -> Data {
         guard let sequence = responseSequence, !sequence.isEmpty else { return responseBody }
         let index = min(sequenceIndex, sequence.count - 1)
@@ -39,7 +39,7 @@ final class MockURLProtocol: URLProtocol {
         return sequence[index]
     }
 
-    /// A session whose only transport is this mock protocol.
+    ///
     static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
@@ -57,8 +57,8 @@ final class MockURLProtocol: URLProtocol {
         if let url = request.url?.absoluteString {
             MockURLProtocol.capturedURLs.append(url)
         }
-        // Lowercase the header keys to match the cross-SDK comparator's
-        // case-insensitive subset match (HANDOFF-028).
+        //
+        //
         var headers: [String: String] = [:]
         for (key, value) in request.allHTTPHeaderFields ?? [:] {
             headers[key.lowercased()] = value
@@ -79,8 +79,8 @@ final class MockURLProtocol: URLProtocol {
 
     override func stopLoading() {}
 
-    /// URLSession moves `httpBody` into `httpBodyStream` before the protocol
-    /// sees the request, so read the stream when the plain body is nil.
+    ///
+    ///
     private static func body(from request: URLRequest) -> Data? {
         if let body = request.httpBody { return body }
         guard let stream = request.httpBodyStream else { return nil }

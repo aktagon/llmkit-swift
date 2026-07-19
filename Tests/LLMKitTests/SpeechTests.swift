@@ -1,16 +1,16 @@
 import XCTest
 @testable import LLMKit
 
-/// Mock-server unit tests for the speech-generation capability (`Speech.swift`).
-/// Each response-parse test drives the real `client.speech.generate(...)` path
-/// against a canned provider reply and asserts `actual == expected` on the
-/// decoded `SpeechResponse`, exercising both audio encodings
-/// (`base64Envelope` / `rawBody`) selected by the generated
-/// `speechGenConfig(provider).audioResponseEncoding` — never provider name. The
-/// request-body and validation cells complete the port coverage.
+///
+///
+///
+///
+///
+///
+///
 final class SpeechTests: XCTestCase {
-    /// A real 44-byte WAV header (base64), the same clip the response-wire
-    /// golden anchors — decodes to exactly 44 bytes.
+    ///
+    ///
     private static let wavBase64 = "UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA="
 
     private func client(_ provider: ProviderName, response: Data) -> Client {
@@ -24,7 +24,7 @@ final class SpeechTests: XCTestCase {
         try JSONValue.parse(String(decoding: try XCTUnwrap(MockURLProtocol.capturedBody), as: UTF8.self))
     }
 
-    // MARK: - Response parsing (base64Envelope shape — Inworld)
+    //
 
     func testInworldBase64EnvelopeDecodes() async throws {
         let envelope = """
@@ -37,13 +37,13 @@ final class SpeechTests: XCTestCase {
         XCTAssertEqual(resp.audio.mimeType, "audio/wav")
         XCTAssertEqual(resp.audio.bytes, [UInt8](try XCTUnwrap(Data(base64Encoded: Self.wavBase64))))
         XCTAssertEqual(resp.audio.bytes.count, 44)
-        // ADR-049 OQ-3: processedCharactersCount is not surfaced (no characters axis).
+        //
         XCTAssertEqual(resp.usage, Usage())
         XCTAssertEqual(resp.finishReason, "")
     }
 
-    /// HANDOFF-036 A5: a 2xx whose body does not parse to audio is a decoding
-    /// error naming the provider and field — never silent empty audio.
+    ///
+    ///
     func testInworldMalformed2xxIsDecodingError() async throws {
         let cases: [(name: String, body: String, want: String)] = [
             ("missing audioContent", #"{"usage":{"processedCharactersCount":8}}"#, "missing or empty audioContent"),
@@ -67,11 +67,11 @@ final class SpeechTests: XCTestCase {
         }
     }
 
-    // MARK: - Response parsing (rawBody shape — OpenAI)
+    //
 
     func testOpenAIRawBodyTakesResponseVerbatim() async throws {
-        // OpenAI /v1/audio/speech returns binary audio, not JSON — the reply is
-        // the audio bytes verbatim.
+        //
+        //
         let mp3: [UInt8] = [0xFF, 0xFB, 0x90, 0x00, 0x6D, 0x70, 0x33]
         let resp = try await client(.openai, response: Data(mp3)).speech
             .model("gpt-4o-mini-tts").voice("alloy")
@@ -82,11 +82,11 @@ final class SpeechTests: XCTestCase {
         XCTAssertEqual(resp.usage, Usage())
     }
 
-    // MARK: - Request bodies (per wire shape)
+    //
 
     func testInworldRequestBody() async throws {
-        // A valid envelope: since HANDOFF-036 A5 a malformed 2xx throws, so the
-        // request-body assertion needs a parseable reply.
+        //
+        //
         let envelope = "{\"audioContent\":\"\(Self.wavBase64)\"}"
         _ = try await client(.inworld, response: Data(envelope.utf8)).speech
             .model("inworld-tts-2").voice("Dennis")
@@ -102,7 +102,7 @@ final class SpeechTests: XCTestCase {
             ])),
             ("deliveryMode", .string("BALANCED")),
         ]))
-        // Inworld authenticates with a Basic-prefixed Authorization header.
+        //
         XCTAssertEqual(MockURLProtocol.capturedHeaders["authorization"], "Basic key")
     }
 
@@ -119,7 +119,7 @@ final class SpeechTests: XCTestCase {
         ]))
     }
 
-    // MARK: - Validation
+    //
 
     func testRequiresModel() async throws {
         do {

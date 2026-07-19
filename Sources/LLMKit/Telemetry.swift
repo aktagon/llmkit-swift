@@ -1,30 +1,30 @@
 import Foundation
 
-/// Opt-in observability (ADR-054 / ADR-059) — an OTEL GenAI-aligned OTLP span
-/// built on every provider call and handed to a caller-supplied `export`. A port
-/// of Rust's `telemetry.rs`. The generated telemetry constants (semconv version,
-/// OTEL attribute keys + the operation-name map) are generated from the ontology
-/// (TelemetryConst in TelemetryGen.swift); this file keeps only the runtime — the
-/// `Telemetry` config, the fail-open exporter, and the pure `buildOTLPTraces`
-/// builder whose cross-SDK parity is held by the telemetry-wire goldens (TEL-011).
+///
+///
+///
+///
+///
+///
+///
 
-/// The telemetry export callback: receives the finished OTLP/HTTP proto3-JSON
-/// bytes for one span, called synchronously on the post phase. Mandatory and
-/// non-nil on `Telemetry`, so an enabled-but-no-sink config is unrepresentable
-/// (the honest-contract lineage, ADR-059 TEL-017).
+///
+///
+///
+///
 public typealias TelemetryExport = @Sendable (Data) -> Void
 
-/// Opt-in observability config (ADR-059). Attach with `Client.addTelemetry`:
-/// llmkit builds an OTEL GenAI-aligned OTLP span on every provider call and hands
-/// the finished bytes to `export`. Off unless attached; `export` is required so
-/// an enabled-but-no-sink config cannot be constructed.
+///
+///
+///
+///
 public struct Telemetry: Sendable {
-    /// Receives the finished OTLP bytes for one span (mandatory). Use
-    /// `Telemetry.httpExport` for the batteries POST, or supply your own to
-    /// bridge into an existing OTEL stack.
+    ///
+    ///
+    ///
     public let export: TelemetryExport
-    /// Gates tier-2 message payloads (default false for privacy). Reserved —
-    /// content-log emission is a deferred follow-up (ADR-054 tier 2).
+    ///
+    ///
     public let captureContent: Bool
 
     public init(export: @escaping TelemetryExport, captureContent: Bool = false) {
@@ -32,17 +32,17 @@ public struct Telemetry: Sendable {
         self.captureContent = captureContent
     }
 
-    /// A batteries export that POSTs each OTLP payload to `endpoint` + `/v1/traces`
-    /// with the given headers, fail-open. Unlike the Rust twin (a synchronous
-    /// std::net POST on the request path), the Swift transport is URLSession, so
-    /// the POST is dispatched fire-and-forget — the request path never blocks on
-    /// the collector, every transport error is swallowed, and spans still in
-    /// flight when the process exits may be dropped (a short-lived CLI should
-    /// expect best-effort delivery; a flush/drain hook is deliberately deferred
-    /// until a real consumer needs one, HANDOFF-036 B4). `session` defaults to
-    /// `.shared` and exists so tests — or a caller with its own URLSession
-    /// configuration — can inject the transport, mirroring the `Client`
-    /// initializer's session seam.
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
     public static func httpExport(
         endpoint: String, headers: [String: String] = [:], session: URLSession = .shared
     ) -> TelemetryExport {
@@ -61,9 +61,9 @@ public struct Telemetry: Sendable {
 }
 
 enum TelemetryRuntime {
-    /// Builds the export hook installed on the middleware seam. On the post phase
-    /// it renders the OTLP payload and calls `export`; the pre phase is a no-op.
-    /// Fail-open: an export error never surfaces to the caller.
+    ///
+    ///
+    ///
     static func makeMiddleware(_ telemetry: Telemetry) -> MiddlewareFn {
         return { event in
             guard event.phase == .post else { return nil }
@@ -72,11 +72,11 @@ enum TelemetryRuntime {
         }
     }
 
-    /// The PURE event-level payload builder: span identity + timing are
-    /// injected so the parity goldens can drive a real post-phase `Event` with
-    /// fixed values. It reads `event.errType` verbatim — the kind was stamped
-    /// at the fire-site erasure seam (`Middleware.setError`), where the typed
-    /// error still exists (ADR-071); no classification happens here.
+    ///
+    ///
+    ///
+    ///
+    ///
     static func buildPayloadAt(
         _ event: Event, traceId: String, spanId: String, startNano: String, endNano: String
     ) -> String {
@@ -90,22 +90,22 @@ enum TelemetryRuntime {
         )
     }
 
-    /// The production wrapper: fresh span identity + the wall clock around the
-    /// pure builder.
+    ///
+    ///
     static func buildPayload(_ event: Event) -> String {
         let now = String(UInt64(max(0, Date().timeIntervalSince1970 * 1_000_000_000)))
         return buildPayloadAt(event, traceId: randHex(16), spanId: randHex(8), startNano: now, endNano: now)
     }
 
-    /// The PURE, deterministic OTLP-payload builder (OTLP/HTTP, proto3-JSON).
-    /// Given the call's primitives plus injectable span identity + timing, returns
-    /// the exact JSON the exporter POSTs. The parity fixtures call it with fixed
-    /// inputs so all five SDKs are asserted value-identical (TEL-011).
     ///
-    /// Encoding notes (OTLP/JSON spec): int64 fields (times, token counts) render
-    /// as strings; traceId/spanId are hex; each attribute value carries exactly
-    /// one of stringValue XOR intValue; the span status is present only on error
-    /// (code 2), omitted on success.
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
     static func buildOTLPTraces(
         operationName: String, provider: String, model: String,
         inputTokens: Int, outputTokens: Int, errorType: String,
@@ -152,14 +152,14 @@ enum TelemetryRuntime {
         .object([("key", .string(key)), ("value", .object([("stringValue", .string(value))]))])
     }
 
-    /// int64 attributes render as a *string* intValue per the OTLP/JSON spec.
+    ///
     private static func intAttr(_ key: String, _ value: Int) -> JSONValue {
         .object([("key", .string(key)), ("value", .object([("intValue", .string(String(value)))]))])
     }
 
-    /// A non-crypto hex string of `nBytes` bytes for span/trace identity. Ids are
-    /// opaque to collectors, so `UUID`'s randomness is more than sufficient and
-    /// keeps this stdlib-only.
+    ///
+    ///
+    ///
     private static func randHex(_ nBytes: Int) -> String {
         var bytes: [UInt8] = []
         while bytes.count < nBytes {

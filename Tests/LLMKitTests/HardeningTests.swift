@@ -1,16 +1,16 @@
 import XCTest
 @testable import LLMKit
 
-/// Hardening-slice regression tests: unknown string-keyed ontology values must
-/// fail loud (never route to an arbitrary provider's wire shape), and every
-/// query-param API-key splice percent-encodes through the shared `urlencode`.
+///
+///
+///
 final class HardeningTests: XCTestCase {
-    // MARK: - urlencode (shared query-param encoder, HTTP.swift)
+    //
 
     func testUrlencodeLeavesUnreservedApiKeyUnchanged() {
-        // A provider key is normally all unreserved characters (alphanumerics,
-        // hyphen, underscore), so encoding is byte-identical — the wire
-        // goldens' URL assertions stay stable.
+        //
+        //
+        //
         XCTAssertEqual(urlencode("test-key_0123456789-abcdefghijklmnop"), "test-key_0123456789-abcdefghijklmnop")
     }
 
@@ -19,7 +19,7 @@ final class HardeningTests: XCTestCase {
         XCTAssertEqual(urlencode("cursor page 2"), "cursor%20page%202")
     }
 
-    // MARK: - Unknown ontology values fail loud (RequestBuilder.swift)
+    //
 
     func testUnknownSystemPlacementThrowsUnsupported() {
         let spec = ProviderSpec(

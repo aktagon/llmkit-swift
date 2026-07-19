@@ -3,10 +3,10 @@ import XCTest
 
 @testable import LLMKit
 
-/// HTTP runtime tests for the catalogue (ADR-019 Phase 3). Mirror of Rust
-/// rust/tests/catalogue_http.rs, go/models_test.go, ts/tests/catalogue_http.test.ts
-/// and python/tests/test_catalogue_http.py. Drives the live list/get/live paths
-/// through the injected MockURLProtocol transport.
+///
+///
+///
+///
 final class CatalogueHTTPTests: XCTestCase {
     private let base = "https://mock.test"
 
@@ -34,7 +34,7 @@ final class CatalogueHTTPTests: XCTestCase {
         XCTAssertEqual(models.count, 3)
         XCTAssertEqual(MockURLProtocol.capturedURLs.count, 2)
         XCTAssertTrue(MockURLProtocol.capturedURLs[1].contains("after_id=claude-sonnet-4-6"))
-        // x-api-key (HeaderAPIKey) auth on the last request.
+        //
         XCTAssertEqual(MockURLProtocol.capturedHeaders["x-api-key"], "test-key")
         let opus = try XCTUnwrap(models.first { $0.id == "claude-opus-4-7" })
         XCTAssertFalse(opus.capabilities.isEmpty, "ontology-enriched")
@@ -47,10 +47,10 @@ final class CatalogueHTTPTests: XCTestCase {
 
         let models = try await client(.google).models.provider(.google).list()
         XCTAssertEqual(models.count, 2)
-        // Parser strips the models/ prefix from response.name.
+        //
         XCTAssertEqual(models[0].id, "gemini-2.5-flash")
         XCTAssertEqual(MockURLProtocol.capturedURLs.count, 2)
-        // QueryParamKey auth rides the URL, cursor on the second page.
+        //
         XCTAssertTrue(MockURLProtocol.capturedURLs[0].contains("key=test-key"))
         XCTAssertTrue(MockURLProtocol.capturedURLs[1].contains("pageToken=opaque-cursor-xyz"))
     }
@@ -65,9 +65,9 @@ final class CatalogueHTTPTests: XCTestCase {
         XCTAssertEqual(MockURLProtocol.capturedHeaders["authorization"], "Bearer test-key")
     }
 
-    /// HANDOFF-036 A4: withCapability composes with provider(p).list() — the
-    /// scoped live list returns only models whose ontology-derived
-    /// capabilities contain the filter.
+    ///
+    ///
+    ///
     func testScopedListAppliesCapabilityFilter() async throws {
         let body = #"{"object":"list","data":[{"id":"gpt-4o-mini","object":"model","created":1715367049,"owned_by":"system"},{"id":"gpt-image-1","object":"model","created":1715367049,"owned_by":"system"}]}"#
         MockURLProtocol.responseBody = Data(body.utf8)

@@ -1,32 +1,32 @@
 import Foundation
 
-/// Hand-coded catalogue runtime (ADR-019). The `Models` / `ScopedModels` /
-/// `Providers` builders (reached from `client.models` / `client.providers`)
-/// delegate their terminals to the free functions in this file. Port of Rust's
-/// `models.rs` + `builders/catalogue.rs`.
 ///
-/// The generated data layer (`Catalogue.swift`, `ModelsParsers.swift`) supplies
-/// the compiled-in table, the per-provider live-endpoint config, and the three
-/// wire-shape parsers; everything with behaviour lives here.
+///
+///
+///
+///
+///
+///
+///
 
-/// Catalogue error sentinels (ADR-019). Live provider calls map to one of these
-/// variants:
 ///
-/// * `.notSupported` — provider lacks `llm:hasModelsEndpoint` (no `/v1/models`
-///   route; nothing to fetch). Vertex and Bedrock surface this until their
-///   dedicated parsers land.
-/// * `.scope` — HTTP 403 whose body mentions scope (OpenAI's `api.model.read`
-///   scope is the canonical case).
-/// * `.unavailable` — any other non-2xx response or network failure during a
-///   live HTTP call.
+///
+///
+///
+///
+///
+///
+///
+///
+///
 public enum CatalogueError: Error, Equatable {
     case notSupported
     case unavailable(String)
     case scope(String)
 
-    /// Wire-format discriminant carried in `ProviderError.kind` (ADR-019
-    /// Amendment 1). Lets consumers branch typed across all four SDKs via a
-    /// single string compare.
+    ///
+    ///
+    ///
     public var kind: String {
         switch self {
         case .notSupported: return "not_supported"
@@ -35,7 +35,7 @@ public enum CatalogueError: Error, Equatable {
         }
     }
 
-    /// Human-readable message carried in `ProviderError.message`.
+    ///
     public var message: String {
         switch self {
         case .notSupported:
@@ -48,12 +48,12 @@ public enum CatalogueError: Error, Equatable {
     }
 }
 
-// MARK: - Builders
+//
 
-/// Models is the catalogue builder. Chain methods clone-on-chain and return a
-/// fresh `Models`; `list` / `get` walk the compiled-in slice synchronously,
-/// `live()` fans out HTTP across configured providers, `provider(p)` returns
-/// `ScopedModels`.
+///
+///
+///
+///
 public struct Models: Sendable {
     let client: Client
     var capFilter: Capability?
@@ -63,52 +63,52 @@ public struct Models: Sendable {
         self.capFilter = nil
     }
 
-    /// Filter the catalogue to models whose ontology-derived capabilities
-    /// contain `c`. Composes with `list` / `live` / `provider(p).list`.
+    ///
+    ///
     public func withCapability(_ c: Capability) -> Models {
         var copy = self
         copy.capFilter = c
         return copy
     }
 
-    /// Scope the catalogue to a single provider; returns `ScopedModels` on which
-    /// `raw()`, `list()`, and `get(id)` are reachable. Credentials come from the
-    /// client, so `p` supplies only the target provider identity.
+    ///
+    ///
+    ///
     public func provider(_ p: ProviderName) -> ScopedModels {
         ScopedModels(client: client, target: p, capFilter: capFilter, rawFlag: false)
     }
 
-    /// Returns the compiled-in catalogue, filtered by `withCapability` when set.
-    /// Synchronous, no IO.
+    ///
+    ///
     public func list() -> [ModelInfo] {
         catalogueFilter(capFilter)
     }
 
-    /// Returns a compiled-in model by id, or nil when no entry matches.
+    ///
     public func get(_ id: String) -> ModelInfo? {
         catalogueLookup(id)
     }
 
-    /// Walk every provider this client is credentialed for and return an
-    /// aggregated `LiveResult`. Today a client carries one provider, so the
-    /// result is 0 or 1 underlying calls; the shape leaves room for a future
-    /// multi-credential client without breaking callers. `withCapability`
-    /// composes post-fetch.
+    ///
+    ///
+    ///
+    ///
+    ///
     public func live() async -> LiveResult {
         await catalogueRunLive(self)
     }
 }
 
-/// ScopedModels is the single-provider live-catalogue sub-builder. Reached via
-/// `Models.provider(p)`. `raw()` opts into populating `ModelInfo.raw` per
-/// ADR-014.
+///
+///
+///
 public struct ScopedModels: Sendable {
     let client: Client
     let target: ProviderName
     var capFilter: Capability?
     var rawFlag: Bool
 
-    /// Opt into carrying the parsed provider-native record on each `ModelInfo`.
+    ///
     public func raw() -> ScopedModels {
         var copy = self
         copy.rawFlag = true
@@ -124,9 +124,9 @@ public struct ScopedModels: Sendable {
     }
 }
 
-/// Providers is the providers-namespace prototype. `list()` returns the
-/// providers with both credentials configured and `llm:hasModelsEndpoint`
-/// declared, as secret-free `ProviderInfo` (ADR-040 PSR-005).
+///
+///
+///
 public struct Providers: Sendable {
     let client: Client
 
@@ -135,24 +135,24 @@ public struct Providers: Sendable {
     }
 }
 
-// MARK: - Compiled-in runtime
+//
 
-/// Records whose capabilities contain the filter; identity when nil. The
-/// single capability predicate (HANDOFF-036 A4): shared by the compiled-in
-/// path (`catalogueFilter`), the scoped live list (`catalogueRunList`), and
-/// — through it — the live aggregate. `get` stays an unfiltered point
-/// lookup by id.
+///
+///
+///
+///
+///
 func applyCapFilter(_ models: [ModelInfo], _ capFilter: Capability?) -> [ModelInfo] {
     guard let cap = capFilter else { return models }
     return models.filter { $0.capabilities.contains(cap) }
 }
 
-/// Walk the compiled-in slice through the shared capability predicate.
+///
 func catalogueFilter(_ capFilter: Capability?) -> [ModelInfo] {
     applyCapFilter(compiledInModels.map(compiledToModelInfo), capFilter)
 }
 
-/// Linear scan over the compiled-in slice. Returns nil on miss.
+///
 func catalogueLookup(_ id: String) -> ModelInfo? {
     compiledInModels.first(where: { $0.id == id }).map(compiledToModelInfo)
 }
@@ -171,11 +171,11 @@ private func compiledToModelInfo(_ def: CompiledModelDef) -> ModelInfo {
     )
 }
 
-// MARK: - Live runtime
+//
 
-/// Aggregate live results across configured providers. Errors land in
-/// `result.errors` as typed `ProviderError` per Amendment 1. Sequential today —
-/// a client carries one provider's credentials, so `n in {0, 1}`.
+///
+///
+///
 func catalogueRunLive(_ models: Models) async -> LiveResult {
     let configured = catalogueProvidersList(models.client)
     var all: [ModelInfo] = []
@@ -193,8 +193,8 @@ func catalogueRunLive(_ models: Models) async -> LiveResult {
             errors[providerNameSlug(info.id)] = ProviderError(kind: "unavailable", message: "\(error)")
         }
     }
-    // capFilter is already applied per-provider inside catalogueRunList
-    // (HANDOFF-036 A4) — no aggregate re-filter needed.
+    //
+    //
     all.sort { a, b in
         let pa = providerNameSlug(a.provider)
         let pb = providerNameSlug(b.provider)
@@ -204,12 +204,12 @@ func catalogueRunLive(_ models: Models) async -> LiveResult {
     return LiveResult(models: all, errors: errors)
 }
 
-/// Single-provider live HTTP. Paginates per the catalogue config until the
-/// parser reports no next cursor, then enriches each record with the
-/// ontology-derived capability list and applies the chain's `capFilter`
-/// (`withCapability` composes with `provider(p).list()` — HANDOFF-036 A4;
-/// `get` stays an unfiltered point lookup by id). Middleware fires once per
-/// call (not per page) for observability at the call granularity.
+///
+///
+///
+///
+///
+///
 func catalogueRunList(_ scoped: ScopedModels) async throws -> [ModelInfo] {
     guard let cfg = catalogueConfig(scoped.target) else { throw CatalogueError.notSupported }
     let pcfg = providerConfig(scoped.target)
@@ -236,9 +236,9 @@ func catalogueRunList(_ scoped: ScopedModels) async throws -> [ModelInfo] {
     }
 }
 
-/// Single-provider live model fetch. URL shapes pinned in plan 025 (Anthropic
-/// `/v1/models/{id}`, OpenAI `/v1/models/{id}`, Google `/v1beta/models/{id}` —
-/// the parser strips `models/` from the response, the URL uses the bare ID).
+///
+///
+///
 func catalogueRunGet(_ scoped: ScopedModels, _ id: String) async throws -> ModelInfo {
     guard let cfg = catalogueConfig(scoped.target) else { throw CatalogueError.notSupported }
     if cfg.parserKind == "ParseVertexModels" || cfg.parserKind == "ParseBedrockModels" {
@@ -270,14 +270,14 @@ func catalogueRunGet(_ scoped: ScopedModels, _ id: String) async throws -> Model
     return enrich(scoped, [record])[0]
 }
 
-/// Providers-namespace runtime: the single credentialed provider, iff it
-/// declares a live models endpoint.
+///
+///
 func catalogueProvidersList(_ client: Client) -> [ProviderInfo] {
     if catalogueConfig(client.provider) == nil { return [] }
     return [providerInfo(client.provider)]
 }
 
-// MARK: - HTTP internals
+//
 
 private func paginate(
     scoped: ScopedModels, pcfg: ProviderSpec, cfg: CatalogueConfig
@@ -296,12 +296,12 @@ private func paginate(
     }
 }
 
-// Splices the pagination cursor into the URL using the cursor query-param
-// name carried by the generated CatalogueConfig (ADR-067 Fix A). Applied to
-// the FULL URL after any QueryParamKey `?key=` is spliced in, so a
-// query-param-auth provider assembles `?key=...&cursor=...` in the same order
-// as Go/Python (CR-003 cross-SDK catalogue-URL byte-parity). An empty cursor
-// or an empty cursorParam (PaginationNone) leaves the URL unchanged.
+//
+//
+//
+//
+//
+//
 func appendCursor(_ rawURL: String, _ cursorParam: String, _ cursor: String) -> String {
     if cursor.isEmpty || cursorParam.isEmpty { return rawURL }
     let sep = rawURL.contains("?") ? "&" : "?"
@@ -312,9 +312,9 @@ private func fetchCatalogueURL(
     scoped: ScopedModels, pcfg: ProviderSpec, endpoint: String,
     cursor: String = "", cursorParam: String = ""
 ) async throws -> Data {
-    // Build the base URL (incl. the QueryParamKey `?key=`) first, THEN append
-    // the pagination cursor — so `?key=...&cursor=...` matches Go/Python's
-    // assembly order (CR-003).
+    //
+    //
+    //
     let url = appendCursor(
         buildCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: endpoint),
         cursorParam, cursor

@@ -1,43 +1,43 @@
 import Foundation
 
-/// The shared multimodal input atom (the API golden rule: single-turn
-/// capabilities take `[Part]`, not `[Message]`). Slice 1 carries only the
-/// variants transcription needs — text plus the two audio sources — mirroring
-/// Rust's `Part::audio` / `Part::audio_bytes`. `audio(url:)` is a remote URL
-/// (AssemblyAI ingests a public URL); `audioBytes(mimeType:data:)` is inline
-/// bytes (OpenAI multipart ingests raw bytes). More modalities join as later
-/// capabilities land on the `[Part]` container.
+///
+///
+///
+///
+///
+///
+///
 public enum Part: Sendable, Equatable {
-    /// Plain text input.
+    ///
     case text(String)
-    /// A remote audio URL (AssemblyAI).
+    ///
     case audio(url: String)
-    /// Inline audio bytes (OpenAI multipart). Carries the IANA mime + raw bytes.
+    ///
     case audioData(MediaRef)
 
-    /// Inline audio bytes from a mime type + `Data`. Mirror of Rust
-    /// `Part::audio_bytes`.
+    ///
+    ///
     public static func audioBytes(mimeType: String, data: Data) -> Part {
         .audioData(MediaRef(mimeType: mimeType, bytes: [UInt8](data)))
     }
 }
 
-/// Transcription (speech-to-text) runtime (ADR-048 / ADR-051) — a port of Rust's
-/// `builders/transcription.rs` onto the shared Job engine (ADR-062). One
-/// capability, two execution shapes selected by the generated
-/// `transcriptionConfig(provider).interaction` fact (never the provider name):
 ///
-/// - `submit([Part])` — ASYNCHRONOUS (AssemblyAI): POST a `{audio_url}` JSON body
-///   (optionally preceded by an upload hop for inline bytes), returning a live
-///   `TranscriptionJob` immediately; poll it to completion with `wait` / `poll`.
-/// - `transcribe([Part])` — SYNCHRONOUS (OpenAI, ADR-051): a single
-///   `multipart/form-data` POST returns the transcript directly, no job handle.
-///   This is the first multipart request path in the Swift SDK.
 ///
-/// The result decode is wire-shape-keyed (STT-005); the submit / poll / status
-/// endpoints and the sync-vs-async split are config. `TranscriptionResponse` is
-/// text-shaped, NOT a media `*Data` container — the structural divergence from
-/// video (ADR-048).
+///
+///
+///
+///
+///
+///
+///
+///
+///
+///
+///
+///
+///
+///
 public struct Transcription: Sendable {
     let provider: ProviderName
     let apiKey: String
@@ -52,18 +52,18 @@ public struct Transcription: Sendable {
         self.http = http
     }
 
-    /// Select the transcription model (required by the synchronous path; the
-    /// asynchronous provider infers it).
+    ///
+    ///
     public func model(_ model: String) -> Transcription { with { $0.modelOverride = model } }
 
-    // MARK: - Async submit (AssemblyAI)
+    //
 
-    /// Submit an asynchronous speech-to-text job and return the live
-    /// `TranscriptionJob`. Pre-flight rejects a synchronous provider (naming
-    /// `transcribe`) and anything other than exactly one audio Part before any
-    /// HTTP call (STT-003). For an audio-bytes part the runtime performs the
-    /// upload hop (POST the raw bytes, read `upload_url`) before submitting
-    /// (STT-005).
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
     public func submit(_ parts: [Part]) async throws -> TranscriptionJob {
         guard !apiKey.isEmpty else {
             throw LLMKitError.validation(field: "api_key", message: "required")
@@ -72,8 +72,8 @@ public struct Transcription: Sendable {
         guard let tcCfg = transcriptionConfig(provider) else {
             throw LLMKitError.validation(field: "provider", message: "\(config.slug) does not support transcription")
         }
-        // A synchronous provider has no job handle; Submit/Wait is the wrong
-        // terminal for it (ADR-051 OAA-003). Name the supported one.
+        //
+        //
         if tcCfg.interaction == "sync" {
             throw LLMKitError.validation(
                 field: "interaction",
@@ -85,8 +85,8 @@ public struct Transcription: Sendable {
         let base = baseURLOverride ?? config.baseURL
         let headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
 
-        // Upload hop (STT-005): a bytes part is uploaded first to obtain a URL the
-        // submit body can reference. URL parts skip this entirely.
+        //
+        //
         let audioURL: String
         if let raw = bytes {
             guard !tcCfg.uploadEndpoint.isEmpty else {
@@ -129,13 +129,13 @@ public struct Transcription: Sendable {
         return TranscriptionJob(handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride)
     }
 
-    // MARK: - Sync transcribe (OpenAI)
+    //
 
-    /// Run a SYNCHRONOUS speech-to-text request (ADR-051): one
-    /// `multipart/form-data` POST returns the transcript directly, no job handle.
-    /// Pre-flight rejects a non-sync provider (naming submit), a missing model, a
-    /// remote audio URL (OpenAI ingests inline bytes only — the inverse of
-    /// AssemblyAI, OAA-005), and a non-single-audio-bytes input.
+    ///
+    ///
+    ///
+    ///
+    ///
     public func transcribe(_ parts: [Part]) async throws -> TranscriptionResponse {
         guard !apiKey.isEmpty else {
             throw LLMKitError.validation(field: "api_key", message: "required")
@@ -158,10 +158,10 @@ public struct Transcription: Sendable {
         let base = baseURLOverride ?? config.baseURL
         let headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
 
-        // Build the multipart body in FIXED field order (model, response_format,
-        // file) so all four SDKs emit the same canonical descriptor (ADR-051
-        // OQ-3). The file part carries the real audio mime + the format-detecting
-        // extension.
+        //
+        //
+        //
+        //
         let mime = media.mimeType.isEmpty ? "application/octet-stream" : media.mimeType
         let filename = "audio.\(Self.audioExtForMime(media.mimeType))"
         let (status, body) = try await http.postMultipart(
@@ -177,17 +177,17 @@ public struct Transcription: Sendable {
         return Self.resultFromOpenAI(raw)
     }
 
-    /// Clone-on-chain helper: copy, mutate, return.
+    ///
     private func with(_ mutate: (inout Transcription) -> Void) -> Transcription {
         var copy = self
         mutate(&copy)
         return copy
     }
 
-    // MARK: - Part normalization (pre-flight, before any HTTP call)
+    //
 
-    /// Enforces the single-audio-part rule (STT-003) and returns the audio source:
-    /// a URL XOR raw bytes. Mirror of `normalize_audio_part`.
+    ///
+    ///
     private func normalizeAudioPart(_ parts: [Part]) throws -> (url: String, bytes: [UInt8]?) {
         var url = ""
         var bytes: [UInt8]?
@@ -212,9 +212,9 @@ public struct Transcription: Sendable {
         return (url, bytes)
     }
 
-    /// Enforces the single-audio-bytes rule for the sync path (OAA-005): exactly
-    /// one inline-bytes audio Part. A remote URL is rejected (OpenAI ingests no
-    /// URL — the inverse of AssemblyAI). Mirror of `normalize_audio_bytes_part`.
+    ///
+    ///
+    ///
     private func normalizeAudioBytesPart(_ parts: [Part]) throws -> MediaRef {
         var media: MediaRef?
         var audioCount = 0
@@ -240,13 +240,13 @@ public struct Transcription: Sendable {
         return m
     }
 
-    // MARK: - Result decode (wire-shape-keyed, STT-005)
+    //
 
-    /// Extracts the transcript text + (when present) segment timings from a
-    /// synchronous OpenAI response. verbose_json offsets are SECONDS (float) ->
-    /// integer milliseconds (x1000, rounded, OAA-006). Missing segments -> empty,
-    /// not an error. Usage stays zero (OAA-007). Mirror of
-    /// `transcription_result_from_openai`.
+    ///
+    ///
+    ///
+    ///
+    ///
     static func resultFromOpenAI(_ raw: JSONValue) -> TranscriptionResponse {
         let text = raw.stringValue(at: "text")
         var segments: [TranscriptSegment] = []
@@ -263,11 +263,11 @@ public struct Transcription: Sendable {
         return TranscriptionResponse(text: text, segments: segments, usage: Usage())
     }
 
-    /// Extracts the transcript text + word-level timing from a completed
-    /// AssemblyAI transcript object. start/end are integer milliseconds; speaker
-    /// is present only on diarized transcripts. Usage stays zero — AssemblyAI
-    /// bills by audio duration, not tokens (ADR-048 OQ-2). Mirror of
-    /// `transcription_result_from_assemblyai`.
+    ///
+    ///
+    ///
+    ///
+    ///
     static func resultFromAssemblyAI(_ raw: JSONValue) -> TranscriptionResponse {
         let text = raw.stringValue(at: "text")
         var segments: [TranscriptSegment] = []
@@ -285,9 +285,9 @@ public struct Transcription: Sendable {
         return TranscriptionResponse(text: text, segments: segments, usage: Usage())
     }
 
-    /// Extracts the finished transcript per wire shape. Only the result decode is
-    /// wire-shape-keyed (STT-005); the submit / poll / status facts are config.
-    /// Mirror of `transcription_result`.
+    ///
+    ///
+    ///
     static func result(_ tcCfg: TranscriptionDef, _ raw: JSONValue) throws -> TranscriptionResponse {
         switch tcCfg.wireShape {
         case "TranscriptionAssemblyAI":
@@ -297,8 +297,8 @@ public struct Transcription: Sendable {
         }
     }
 
-    /// Maps an audio IANA media type to the file extension OpenAI uses to detect
-    /// the format. Mirror of `audio_ext_for_mime`.
+    ///
+    ///
     static func audioExtForMime(_ mime: String) -> String {
         switch mime {
         case "audio/mpeg", "audio/mp3": return "mp3"
@@ -312,18 +312,18 @@ public struct Transcription: Sendable {
     }
 }
 
-/// The live transcription handle: the persistable `TranscriptionHandle` value
-/// plus the credentials + transport needed to poll it (mirror of `VideoJob` /
-/// `BatchJob`). `handle` is the persistable value for cross-process resume
-/// (ADR-014).
+///
+///
+///
+///
 public final class TranscriptionJob: Sendable {
-    /// The persistable identity value (ADR-014 cross-process resume).
+    ///
     public let handle: TranscriptionHandle
     let apiKey: String
     let http: HTTPClient
     let baseURLOverride: String?
-    /// Poll cadence for `wait` (tests shrink these via `cadence`; defaults match
-    /// Rust/Go — 3s interval, 10min timeout).
+    ///
+    ///
     let interval: TimeInterval
     let timeout: TimeInterval
 
@@ -339,8 +339,8 @@ public final class TranscriptionJob: Sendable {
         self.timeout = timeout
     }
 
-    /// A copy with the same identity + transport and the given poll cadence
-    /// (internal test seam).
+    ///
+    ///
     func cadence(interval: TimeInterval, timeout: TimeInterval) -> TranscriptionJob {
         TranscriptionJob(
             handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
@@ -348,12 +348,12 @@ public final class TranscriptionJob: Sendable {
         )
     }
 
-    /// One normalized poll round-trip (ADR-063 POLL-001): no loop.
+    ///
     public func poll() async throws -> JobStatus<TranscriptionResponse> {
         try await Job.pollOnce(try makeAdapter())
     }
 
-    /// Poll until a terminal state, returning the finished `TranscriptionResponse`.
+    ///
     public func wait() async throws -> TranscriptionResponse {
         var adapter = try makeAdapter()
         adapter.lc.pollInterval = interval
@@ -369,9 +369,9 @@ public final class TranscriptionJob: Sendable {
     }
 }
 
-/// Binds async transcription to the Job engine's four seams (ADR-062). `classify`
-/// uses the config-backed default (status vs done_status / error_status);
-/// `result` decodes the finished transcript per wire shape (no second hop).
+///
+///
+///
 struct TranscriptionAdapter: JobAdapter {
     var lc: LifecycleConfig
     var config: LifecycleConfig { lc }

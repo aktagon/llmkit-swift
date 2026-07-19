@@ -1,15 +1,15 @@
 import Foundation
 
-/// Builds the provider-specific chat request body, headers, and URL from the
-/// generated `ProviderSpec` + option tables. Selected by config facts
-/// (`chatWireShape`, `systemPlacement`, `authScheme`, `wrapsOptionsIn`), never
-/// by provider name — a file-by-file port of Rust's `request.rs::build_request`
-/// covering the Phase 2 ChatCompletion surface (options, structured output,
-/// the Responses protocol; media Parts / tools / SigV4 land in later phases).
+///
+///
+///
+///
+///
+///
 enum RequestBuilder {
-    /// Resolve a chat-protocol opt-in token (ADR-055) to the effective
-    /// `(wireShape, endpoint)`. An empty token keeps the default; an unknown or
-    /// unsupported token is a loud validation error before any body is built.
+    ///
+    ///
+    ///
     static func resolveChatProtocol(
         config: ProviderSpec,
         token: String
@@ -33,10 +33,10 @@ enum RequestBuilder {
         token == "responses" ? "ChatResponsesOpenAI" : nil
     }
 
-    /// Construct the request body + headers for a chat request. `msgs` is the
-    /// internal message list (a single user turn on the Text path, the full
-    /// history on the Agent path); `tools` serializes tool definitions when the
-    /// caller registered any. Mirror of Rust's `build_request`.
+    ///
+    ///
+    ///
+    ///
     static func buildBody(
         config: ProviderSpec,
         wireShape: String,
@@ -61,7 +61,7 @@ enum RequestBuilder {
             JSONObject.set(&body, maxKey, .int(Int64(maxTokens)))
         }
 
-        // System placement (the message-array case is handled inside the shape).
+        //
         switch config.systemPlacement {
         case "TopLevelField":
             if let system {
@@ -89,9 +89,9 @@ enum RequestBuilder {
         )
         Transforms.applyToolDefs(&body, config, tools)
 
-        // Options. When the provider wraps options (Google's generationConfig),
-        // the generation params + max-token key nest inside the wrapper; root
-        // extras (ADR-029) always deep-merge at the true body root.
+        //
+        //
+        //
         if !config.wrapsOptionsIn.isEmpty {
             var wrapped: [(String, JSONValue)] = []
             let rootExtras = addOptions(&wrapped, config, model, options)
@@ -122,10 +122,10 @@ enum RequestBuilder {
             addStructuredOutput(&body, schema: schema, provider: config.name)
         }
 
-        // #23: the full contract-bearing `anthropic-beta` set for this request —
-        // structured-output beta + files-api beta (BUG-017) — composed and
-        // deduped in one place, then applied once. Composing (never overwriting)
-        // preserves any existing anthropic-beta.
+        //
+        //
+        //
+        //
         let beta = betaHeaders(config: config, options: options, msgs: msgs)
         if !beta.isEmpty {
             if let index = headers.firstIndex(where: { $0.0.caseInsensitiveCompare("anthropic-beta") == .orderedSame }) {
@@ -135,8 +135,8 @@ enum RequestBuilder {
             }
         }
 
-        // ADR-055 Responses body fixup: the output-token cap is named
-        // `max_output_tokens` (not `max_tokens`) on the Responses envelope.
+        //
+        //
         if wireShape == "ChatResponsesOpenAI" {
             if let value = JSONObject.value(body, "max_tokens") {
                 JSONObject.remove(&body, "max_tokens")
@@ -147,8 +147,8 @@ enum RequestBuilder {
         return (.object(body), headers)
     }
 
-    /// The chosen model, or the provider default; errors when neither exists
-    /// (ADR-031 honest no-default contract).
+    ///
+    ///
     static func resolveModel(_ config: ProviderSpec, _ override: String?) throws -> String {
         if let override { return override }
         if config.defaultModel.isEmpty {
@@ -160,9 +160,9 @@ enum RequestBuilder {
         return config.defaultModel
     }
 
-    /// Send a chat request, dispatching on the auth scheme: a SigV4 provider
-    /// (Bedrock) signs the exact bytes and reads its credentials from the
-    /// environment (ADR-052); every other provider posts with the auth headers.
+    ///
+    ///
+    ///
     static func send(
         config: ProviderSpec,
         url: String,
@@ -188,13 +188,13 @@ enum RequestBuilder {
         )
     }
 
-    /// Resolve the complete `anthropic-beta` value a chat request requires,
-    /// composed and deduplicated (#23). Two contract-bearing betas apply on the
-    /// text path: the structured-output beta (when a schema is set) and the
-    /// files-api beta (when the request carries file parts, BUG-017). Structured
-    /// output is composed first to preserve the historical token order. A batch
-    /// envelope lifts its items' betas separately (Batching.swift) — a distinct
-    /// concern, deliberately not folded here.
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
     static func betaHeaders(config: ProviderSpec, options: PromptOptions, msgs: [Transforms.Msg]) -> String {
         var beta = ""
         if options.schema != nil, let def = structuredOutput(config.name), !def.betaHeader.isEmpty {
@@ -206,8 +206,8 @@ enum RequestBuilder {
         return beta
     }
 
-    /// Compose two comma-separated `anthropic-beta` header values, preserving
-    /// order and deduplicating tokens (mirror of Rust's `append_beta`).
+    ///
+    ///
     static func appendBeta(_ existing: String, _ addition: String) -> String {
         func tokens(_ s: String) -> [String] {
             s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -219,8 +219,8 @@ enum RequestBuilder {
         return values.joined(separator: ",")
     }
 
-    /// Provider auth + required headers, dispatched on the generated
-    /// `authScheme` fact (QueryParamKey / SigV4 contribute no header here).
+    ///
+    ///
     static func buildAuthHeaders(config: ProviderSpec, apiKey: String) -> [(String, String)] {
         var headers: [(String, String)] = []
         switch config.authScheme {
@@ -239,8 +239,8 @@ enum RequestBuilder {
         return headers
     }
 
-    /// The request URL: base (with optional override) + endpoint, resolving
-    /// `{region}`/`{model}`/`{apiKey}` placeholders and the QueryParamKey `?key=`.
+    ///
+    ///
     static func buildURL(
         config: ProviderSpec,
         endpoint: String,
@@ -262,13 +262,13 @@ enum RequestBuilder {
         return base + resolved
     }
 
-    // MARK: - Options
+    //
 
-    /// Loud pre-flight rejection of options the provider's supported-options
-    /// table lacks (mirror of Go's `validateOptions`, go/llmkit.go): a silently
-    /// dropped knob is a footgun. Providers declaring no supported table skip
-    /// validation entirely. Runs before any body construction so prompt, stream,
-    /// agent, and batch all inherit it from the shared buildBody seam.
+    ///
+    ///
+    ///
+    ///
+    ///
     static func validateOptions(config: ProviderSpec, options: PromptOptions) throws {
         let supported = supportedOptions(config.name)
         guard !supported.isEmpty else { return }
@@ -294,8 +294,8 @@ enum RequestBuilder {
             if !has(.reasoningEffort) {
                 throw LLMKitError.validation(field: "reasoning_effort", message: "not supported by \(config.slug)")
             }
-            // Value check against the ontology-defined allowedValues
-            // (provider-level overrides), mirroring Go.
+            //
+            //
             if let override = optionOverrides(config.name).first(
                 where: { $0.key == .reasoningEffort && !$0.allowedValues.isEmpty }),
                 !override.allowedValues.contains(effort) {
@@ -307,8 +307,8 @@ enum RequestBuilder {
         }
     }
 
-    /// Applies generation parameters to `body` and returns the accumulated root
-    /// extras (ADR-029 THK-003) for the caller to deep-merge at the body root.
+    ///
+    ///
     private static func addOptions(
         _ body: inout [(String, JSONValue)],
         _ config: ProviderSpec,
@@ -345,24 +345,24 @@ enum RequestBuilder {
         guard let jsonKey = resolveOptionKey(config.name, model, key) else { return }
         JSONObject.insertNested(&body, jsonKey, value)
 
-        // Static sibling fields from the option override (e.g. Anthropic's
-        // {"type":"enabled"} alongside thinking.budget_tokens) merge into the
-        // leaf's parent object.
+        //
+        //
+        //
         if let override = optionOverrides(config.name).first(where: { $0.key == key && !$0.extraFieldsJSON.isEmpty }),
            case let .object(extras)? = try? JSONValue.parse(override.extraFieldsJSON) {
             JSONObject.mergeIntoParent(&body, jsonKey, extras)
         }
-        // Root extras (ADR-029): static fields the option implies at the body
-        // ROOT (e.g. {"thinking":{"type":"adaptive"}} alongside output_config.effort).
+        //
+        //
         if let override = optionOverrides(config.name).first(where: { $0.key == key && !$0.rootExtraFieldsJSON.isEmpty }),
            case let .object(extras)? = try? JSONValue.parse(override.rootExtraFieldsJSON) {
             JSONObject.deepMerge(&rootExtras, extras)
         }
     }
 
-    /// Wire (JSON) key for `key` on `(provider, model)`. Per-model overrides
-    /// (ADR-024) outrank the provider default: an exact id match wins outright,
-    /// else the longest-prefix glob wins, else the provider's supported-options key.
+    ///
+    ///
+    ///
     static func resolveOptionKey(_ provider: ProviderName, _ model: String, _ key: OptionKey) -> String? {
         var bestKey: String?
         var bestLen = -1
@@ -383,7 +383,7 @@ enum RequestBuilder {
         return supportedOptions(provider).first(where: { $0.key == key })?.jsonKey
     }
 
-    // MARK: - Structured output
+    //
 
     private static func addStructuredOutput(
         _ body: inout [(String, JSONValue)],
@@ -395,8 +395,8 @@ enum RequestBuilder {
 
         if def.enforceStrict { setAdditionalPropertiesFalse(&parsed) }
         if def.removeAdditionalProps { removeAdditionalProperties(&parsed) }
-        // Beta-header selection lives in betaHeaders(config:options:msgs:) (#23);
-        // this seam only shapes the body.
+        //
+        //
 
         if def.schemaPlacement == "SiblingOfFormat" {
             JSONObject.insertNested(&body, def.formatField, .string(def.formatType))
@@ -424,9 +424,9 @@ enum RequestBuilder {
         JSONObject.insertNested(&body, def.formatField, formatObject)
     }
 
-    /// EnforceStrict normalization: set `additionalProperties:false` on every
-    /// object node and auto-fill `required` with all property keys when absent
-    /// (recursing through `properties` and `items`).
+    ///
+    ///
+    ///
     private static func setAdditionalPropertiesFalse(_ schema: inout JSONValue) {
         guard case var .object(pairs) = schema else { return }
         if JSONObject.value(pairs, "type") == .string("object") {
@@ -447,7 +447,7 @@ enum RequestBuilder {
         schema = .object(pairs)
     }
 
-    /// Google normalization: strip `additionalProperties` at every node.
+    ///
     private static func removeAdditionalProperties(_ schema: inout JSONValue) {
         guard case var .object(pairs) = schema else { return }
         JSONObject.remove(&pairs, "additionalProperties")

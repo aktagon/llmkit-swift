@@ -1,10 +1,10 @@
 import Foundation
 
-/// Streaming (SSE) text generation — a file-by-file port of Rust's `stream.rs`.
-/// Builds the request body through the shared `RequestBuilder`, adds the
-/// per-provider stream flag (+ `stream_options.include_usage` where the provider
-/// requires it, BUG-028), and consumes the `event:` / `data:` frame stream,
-/// invoking `onDelta` per text chunk and assembling the final `Response`.
+///
+///
+///
+///
+///
 enum Streamer {
     static func run(
         config: ProviderSpec,
@@ -31,7 +31,7 @@ enum Streamer {
         if !stream.param.isEmpty {
             JSONObject.set(&body, stream.param, .bool(true))
         }
-        // BUG-028: opt into a streamed usage frame where the provider requires it.
+        //
         if stream.usageOptIn {
             JSONObject.set(&body, "stream_options", .object([("include_usage", .bool(true))]))
         }
@@ -59,15 +59,15 @@ enum Streamer {
             }
             guard let data = strip(line, "data: ") else { continue }
 
-            // Data-level done sentinel (e.g. OpenAI [DONE]) is literal, not JSON.
+            //
             if !stream.doneSignal.isEmpty, data == stream.doneSignal {
                 return Response(text: fullText, usage: usage, finishReason: finishReason, finishMessage: "", raw: nil)
             }
 
             let parsed = try? JSONValue.parse(data)
 
-            // ADR-013: capture the stream-time finish reason before any event-
-            // level done return.
+            //
+            //
             if let parsed, !finishPath.isEmpty, finishEvent.isEmpty || finishEvent == currentEvent {
                 let value = parsed.stringValue(at: finishPath)
                 if !value.isEmpty, value != "FINISH_REASON_UNSPECIFIED" {
@@ -108,8 +108,8 @@ enum Streamer {
         return Response(text: fullText, usage: usage, finishReason: finishReason, finishMessage: "", raw: nil)
     }
 
-    /// Split `event_name:json.path` into its event-name prefix and the JSON
-    /// path. Bare paths return ("", path); empty returns ("", "").
+    ///
+    ///
     private static func parseStreamFinishPath(_ p: String) -> (event: String, path: String) {
         if p.isEmpty { return ("", "") }
         if let idx = p.firstIndex(of: ":") {

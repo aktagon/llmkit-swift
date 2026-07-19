@@ -1,13 +1,13 @@
 import XCTest
 @testable import LLMKit
 
-/// Behavior tests for the middleware seam (Phase 4a): pre-phase observation +
-/// veto and post-phase observation with usage, across the prompt / agent / batch
-/// sites. The wire goldens assert the caching body but never exercise the
-/// observation/veto hooks — these do. Real domain values, `actual == expected`.
+///
+///
+///
+///
 final class MiddlewareTests: XCTestCase {
-    /// Synchronous recorder for the events a middleware hook observes. The hooks
-    /// fire synchronously on the calling task, so no locking is needed.
+    ///
+    ///
     private final class Recorder: @unchecked Sendable {
         var events: [Event] = []
         func record(_ event: Event) { events.append(event) }
@@ -24,7 +24,7 @@ final class MiddlewareTests: XCTestCase {
         "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Helsinki\"}}]," +
         "\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":2}}"
 
-    // MARK: - Prompt: pre + post observation
+    //
 
     func testPromptFiresLlmRequestPreAndPost() async throws {
         let recorder = Recorder()
@@ -36,7 +36,7 @@ final class MiddlewareTests: XCTestCase {
 
         XCTAssertEqual(response.text, "Helsinki")
         XCTAssertEqual(recorder.events.count, 2)
-        // Pre fires first with no usage; post fires with the observed usage.
+        //
         XCTAssertEqual(recorder.events[0].op, .llmRequest)
         XCTAssertEqual(recorder.events[0].phase, .pre)
         XCTAssertEqual(recorder.events[0].provider, "openai")
@@ -48,7 +48,7 @@ final class MiddlewareTests: XCTestCase {
         XCTAssertNil(recorder.events[1].err)
     }
 
-    // MARK: - Prompt: pre-phase veto aborts before the network call
+    //
 
     private struct BlockedError: Error, Equatable { let reason: String }
 
@@ -65,13 +65,13 @@ final class MiddlewareTests: XCTestCase {
         } catch let error as MiddlewareVeto {
             XCTAssertEqual(error.cause as? BlockedError, BlockedError(reason: "policy"))
         }
-        // The veto is first in registration order, so the observer never fires,
-        // and no request was sent (the veto short-circuits before build/send).
+        //
+        //
         XCTAssertTrue(recorder.events.isEmpty)
         XCTAssertNil(MockURLProtocol.capturedBody)
     }
 
-    // MARK: - Agent: toolCall observation
+    //
 
     func testAgentFiresToolCall() async throws {
         MockURLProtocol.reset()
@@ -96,7 +96,7 @@ final class MiddlewareTests: XCTestCase {
         let client = Client(provider: .openai, apiKey: "key", session: MockURLProtocol.makeSession())
         _ = try await client.agent().addTool(tool).addMiddleware(hook).prompt("Weather in Helsinki?")
 
-        // Two llmRequest turns (pre+post each) plus one toolCall (pre+post).
+        //
         let toolPre = recorder.events.first { $0.op == .toolCall && $0.phase == .pre }
         let toolPost = recorder.events.first { $0.op == .toolCall && $0.phase == .post }
         XCTAssertEqual(toolPre?.tool, "get_weather")
@@ -105,7 +105,7 @@ final class MiddlewareTests: XCTestCase {
         XCTAssertTrue(recorder.events.contains { $0.op == .llmRequest && $0.phase == .post })
     }
 
-    // MARK: - Batch: batchSubmit observation
+    //
 
     func testBatchFiresBatchSubmit() async throws {
         let recorder = Recorder()

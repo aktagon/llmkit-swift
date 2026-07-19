@@ -1,15 +1,15 @@
 import Foundation
 
-/// Mutation helpers that treat a `[(String, JSONValue)]` as a mutable JSON
-/// object during request construction. The request pipeline builds the body on
-/// ordered key/value pairs (so serialization is deterministic, ADR-066
-/// SWIFT-002); these re-express the four operations Rust's `request.rs`
-/// performs on `serde_json::Map` — nested insert, parent merge, deep merge,
-/// remove — over ordered pairs. All are recursive and create intermediate
-/// objects on demand, mirroring `insert_nested_field` / `merge_into_parent` /
-/// `deep_merge` byte-for-byte in effect (value-equal, not key-order-equal).
+///
+///
+///
+///
+///
+///
+///
+///
 enum JSONObject {
-    /// Set `key` (replace an existing pair, else append) — object insert.
+    ///
     static func set(_ obj: inout [(String, JSONValue)], _ key: String, _ value: JSONValue) {
         if let index = obj.firstIndex(where: { $0.0 == key }) {
             obj[index].1 = value
@@ -18,18 +18,18 @@ enum JSONObject {
         }
     }
 
-    /// Remove a top-level `key`.
+    ///
     static func remove(_ obj: inout [(String, JSONValue)], _ key: String) {
         obj.removeAll(where: { $0.0 == key })
     }
 
-    /// The value for a top-level `key`, or nil.
+    ///
     static func value(_ obj: [(String, JSONValue)], _ key: String) -> JSONValue? {
         obj.first(where: { $0.0 == key })?.1
     }
 
-    /// Insert `value` at a dotted `path`, creating (or replacing non-object)
-    /// intermediate objects — mirror of `insert_nested_field`.
+    ///
+    ///
     static func insertNested(_ obj: inout [(String, JSONValue)], _ path: String, _ value: JSONValue) {
         insertParts(&obj, path.split(separator: ".").map(String.init), value)
     }
@@ -53,9 +53,9 @@ enum JSONObject {
         set(&obj, head, .object(child))
     }
 
-    /// Merge `extras` into the object that CONTAINS the leaf of `path`: for
-    /// "a.b.c" they land in obj["a"]["b"]; for a top-level path, in obj.
-    /// Mirror of `merge_into_parent`.
+    ///
+    ///
+    ///
     static func mergeIntoParent(
         _ obj: inout [(String, JSONValue)],
         _ path: String,
@@ -81,8 +81,8 @@ enum JSONObject {
         obj[index].1 = .object(child)
     }
 
-    /// Deep-merge `src` into `dst`: when both hold an object at the same key the
-    /// objects merge, else `src` overwrites. Mirror of `deep_merge`.
+    ///
+    ///
     static func deepMerge(_ dst: inout [(String, JSONValue)], _ src: [(String, JSONValue)]) {
         for (key, value) in src {
             if case let .object(sourceChild) = value,

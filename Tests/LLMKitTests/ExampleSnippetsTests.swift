@@ -1,13 +1,13 @@
 import XCTest
 import LLMKit
 
-/// Executes the canonical README call chains against the mock transport, so the
-/// snippets shown in `swift/README.md` are code that runs in CI. The
-/// `// #region <name>` blocks are extracted verbatim into the README by
-/// `codegen/render_readme.py` (include directives) — keep each region a pure
-/// call chain that reads cleanly standalone: no client construction, no
-/// assertions inside the region. Deliberately a plain `import LLMKit` (not
-/// `@testable`): a snippet that compiles here is reachable by a real consumer.
+///
+///
+///
+///
+///
+///
+///
 final class ExampleSnippetsTests: XCTestCase {
     private func mockClient(_ provider: ProviderName) -> Client {
         Client(provider: provider, apiKey: "key", session: MockURLProtocol.makeSession())
@@ -17,7 +17,7 @@ final class ExampleSnippetsTests: XCTestCase {
         bytes.map { String(format: "%02x", $0) }.joined()
     }
 
-    // MARK: - Stream (README "Stream" fence)
+    //
 
     func testStreamSnippet() async throws {
         MockURLProtocol.reset()
@@ -25,7 +25,7 @@ final class ExampleSnippetsTests: XCTestCase {
             contentsOf: TestPaths.testdata("wire/response/v1/bodies/stream-openai.sse"))
         let client = mockClient(.openai)
 
-        // #region stream
+        //
         let resp = try await client.text
             .system("Be brief")
             .stream("Tell me a joke") { chunk in
@@ -33,7 +33,7 @@ final class ExampleSnippetsTests: XCTestCase {
             }
 
         print("\nUsage: \(resp.usage.input) in / \(resp.usage.output) out")
-        // #endregion
+        //
 
         XCTAssertEqual(resp.text, "Hello.")
         XCTAssertEqual(resp.finishReason, "stop")
@@ -41,7 +41,7 @@ final class ExampleSnippetsTests: XCTestCase {
         XCTAssertEqual(resp.usage.output, 2)
     }
 
-    // MARK: - Batch (README "Batches" fence)
+    //
 
     func testBatchSnippet() async throws {
         MockURLProtocol.reset()
@@ -57,7 +57,7 @@ final class ExampleSnippetsTests: XCTestCase {
         ]
         let client = mockClient(.openai)
 
-        // #region batch
+        //
         let job = try await client.text
             .system("Be brief")
             .batch(
@@ -66,13 +66,13 @@ final class ExampleSnippetsTests: XCTestCase {
             )
         let results = try await job.wait()
         for r in results { print(r.text) }
-        // #endregion
+        //
 
         XCTAssertEqual(job.handle.id, "batch_ex1")
         XCTAssertEqual(results.map(\.text), ["Bonjour", "Hola"])
     }
 
-    // MARK: - Music (README "Music" fence)
+    //
 
     func testMusicSnippet() async throws {
         MockURLProtocol.reset()
@@ -82,7 +82,7 @@ final class ExampleSnippetsTests: XCTestCase {
         MockURLProtocol.responseBody = Data(body.utf8)
         let client = mockClient(.minimax)
 
-        // #region music
+        //
         let resp = try await client.music
             .model("music-2.6")
             .generate("a calm instrumental, warm piano and soft strings")
@@ -90,14 +90,14 @@ final class ExampleSnippetsTests: XCTestCase {
         if let first = resp.audio.first {
             print("\(first.bytes.count) audio bytes (\(first.mimeType))")
         }
-        // #endregion
+        //
 
         XCTAssertEqual(resp.audio.count, 1)
         XCTAssertEqual(resp.audio[0].bytes, mp3)
         XCTAssertEqual(resp.audio[0].mimeType, "audio/mpeg")
     }
 
-    // MARK: - Video (README "Video" fence)
+    //
 
     func testVideoSnippet() async throws {
         MockURLProtocol.reset()
@@ -107,7 +107,7 @@ final class ExampleSnippetsTests: XCTestCase {
         ]
         let client = mockClient(.grok)
 
-        // #region video
+        //
         let job = try await client.video
             .model("grok-imagine-video")
             .submit("a slow cinematic drone shot flying over snow-capped alpine peaks at golden hour")
@@ -116,7 +116,7 @@ final class ExampleSnippetsTests: XCTestCase {
         if let first = resp.videos.first {
             print("url=\(first.url) duration=\(first.durationSeconds)s")
         }
-        // #endregion
+        //
 
         XCTAssertEqual(resp.videos.count, 1)
         XCTAssertEqual(resp.videos.first?.url, "https://xai.example/vid_ex1.mp4")

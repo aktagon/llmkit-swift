@@ -1,12 +1,12 @@
 import XCTest
 @testable import LLMKit
 
-/// Telemetry-wire driver (ADR-054 TEL-011): call the PURE OTLP builder with the
-/// SAME fixed inputs the other four SDKs feed and assert the payload is
-/// value-equal to the shared golden at codegen/testdata/wire/telemetry/v1/. Each
-/// test also drops target/wire/telemetry/<fixture>/swift.json so the cross-SDK
-/// comparator (codegen/test_cross_sdk_telemetry_wire.py) can enroll Swift. Span
-/// identity + timing are injected fixed so the payload is byte-stable.
+///
+///
+///
+///
+///
+///
 final class TelemetryWireTests: XCTestCase {
     private func assertGolden(_ fixture: String, _ payload: String) throws {
         try TestPaths.writeTelemetryArtifact(fixture: fixture, payload: payload)
@@ -39,10 +39,10 @@ final class TelemetryWireTests: XCTestCase {
         try assertGolden("telemetry-rejection", payload)
     }
 
-    /// Exercises classification end-to-end (ADR-071 ETY-004): the SDK's typed
-    /// API error routes through the REAL erasure seam (`Middleware.setError`),
-    /// and the stamped event renders to the shared telemetry-error golden via
-    /// the pure event-level builder — no error.type is hand-fed anywhere.
+    ///
+    ///
+    ///
+    ///
     func testTelemetryError() throws {
         var event = Event(op: .llmRequest, provider: "openai", model: "gpt-4o", phase: .post)
         Middleware.setError(

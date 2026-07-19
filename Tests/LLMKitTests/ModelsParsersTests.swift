@@ -3,9 +3,9 @@ import XCTest
 
 @testable import LLMKit
 
-/// Parser tests against codegen/fixtures/models/* (ADR-019). Mirror of Rust
-/// rust/tests/models_parsers.rs, Go go/providers/models_parsers_test.go, TS
-/// ts/tests/models_parsers.test.ts, and Python python/tests/test_models_parsers.py.
+///
+///
+///
 final class ModelsParsersTests: XCTestCase {
     private func fixture(_ name: String) throws -> Data {
         let url = TestPaths.repoRoot()
@@ -38,8 +38,8 @@ final class ModelsParsersTests: XCTestCase {
     }
 
     func testParseAnthropicMalformedCreatedAtYieldsZero() throws {
-        // Documents the silent-failure contract: a bad timestamp does not crash
-        // the parser; the record just lands with created == 0.
+        //
+        //
         let body = Data(#"{"data":[{"id":"m","created_at":"not-a-date"}]}"#.utf8)
         let page = try parseAnthropicModelsResponse(body)
         XCTAssertEqual(page.records.count, 1)

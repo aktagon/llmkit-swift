@@ -1,15 +1,15 @@
 import Foundation
 
-/// Prompt-caching runtime — a port of Rust's `caching.rs`. Dispatches on the
-/// generated `CachingDef.mode` (never on provider name): automatic caching is a
-/// no-op (the provider caches transparently), explicit caching injects
-/// `cache_control` onto the system prefix (Anthropic), and resource caching
-/// creates a provider-side cached-content resource and references it (Google).
-/// The generated `CachingMode` / `CachingDef` live in `Providers/Generated/`.
+///
+///
+///
+///
+///
+///
 enum CachingRuntime {
-    /// Apply caching to an already-built request body when the caller opted in
-    /// (`options.caching`). No-op when caching is off; a loud validation error
-    /// when the provider declares no caching config.
+    ///
+    ///
+    ///
     static func apply(
         _ body: inout JSONValue,
         provider: ProviderName,
@@ -37,9 +37,9 @@ enum CachingRuntime {
         }
     }
 
-    /// Explicit caching (Anthropic): rewrite the system prefix into a single
-    /// text block carrying `cache_control`. Placement is config-driven — the
-    /// system lives at the top level (Anthropic) or as the last system message.
+    ///
+    ///
+    ///
     private static func applyExplicit(_ body: inout JSONValue, controlType: String, config: ProviderSpec) {
         guard case var .object(root) = body else { return }
         defer { body = .object(root) }
@@ -73,9 +73,9 @@ enum CachingRuntime {
         }
     }
 
-    /// Resource caching (Google): create a `/cachedContents` resource holding the
-    /// system instruction, then reference it by name and drop the inline system.
-    /// Fires the `cacheCreate` middleware op around the network hop.
+    ///
+    ///
+    ///
     private static func applyResource(
         _ body: inout JSONValue,
         provider: ProviderName,
@@ -118,8 +118,8 @@ enum CachingRuntime {
         var postEvent = baseEvent
         let resourceID: String
         do {
-            // ADR-052: Google resource caching authenticates via the URL query
-            // param, so there is no auth header to collide with.
+            //
+            //
             let headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
             let (status, responseBody) = try await http.postJSON(url: createURL, body: createBody, headers: headers)
             guard (200..<300).contains(status) else {

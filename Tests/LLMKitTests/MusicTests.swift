@@ -1,19 +1,19 @@
 import XCTest
 @testable import LLMKit
 
-/// Mock-server unit tests for the music-generation capability (`Music.swift`).
-/// There is no cross-SDK wire golden for music, so parity is held by these
-/// unit tests (mirroring Rust's `music.rs` tests). Each drives the real
-/// `client.music.generate(...)` path against a canned provider reply and
-/// asserts `actual == expected` on the request body and the decoded
-/// `MusicResponse`, exercising all three wire shapes (`MusicMinimax` /
-/// `MusicPredict` / `MusicGenerateContent`) selected by the generated
-/// `musicGenConfig(provider).wireShape` — never provider name.
+///
+///
+///
+///
+///
+///
+///
+///
 final class MusicTests: XCTestCase {
-    /// A short fake MP3 the MiniMax hex path round-trips (matches the Rust
-    /// fixture `FAKE_MP3`).
+    ///
+    ///
     private static let fakeMP3: [UInt8] = [0xFF, 0xFB, 0x90, 0x00, 0x6D, 0x70, 0x33]
-    /// A real 44-byte WAV header (base64) for the Vertex/Gemini base64 paths.
+    ///
     private static let wavBase64 = "UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA="
 
     private func client(_ provider: ProviderName, response: String) -> Client {
@@ -32,7 +32,7 @@ final class MusicTests: XCTestCase {
         bytes.map { String(format: "%02x", $0) }.joined()
     }
 
-    // MARK: - MiniMax (MusicMinimax shape: hex audio)
+    //
 
     func testMinimaxBodyPromptOnlyOmitsLyrics() async throws {
         _ = try await client(.minimax, response: "{\"data\":{\"audio\":\"\"}}").music
@@ -64,97 +64,97 @@ final class MusicTests: XCTestCase {
         {"data":{"audio":"\(Self.hexEncode(Self.fakeMP3))"},\
         "base_resp":{"status_code":0,"status_msg":"success"}}
         """
-        let resp = try await client(.minimax, response: response).music
-            .model("music-2.6").generate("lofi hip hop")
 
-        XCTAssertEqual(resp.audio.count, 1)
-        XCTAssertEqual(resp.audio[0].bytes, Self.fakeMP3)
-        XCTAssertEqual(resp.audio[0].mimeType, "audio/mpeg")
-        // status_msg "success" is not surfaced as a finish message.
-        XCTAssertEqual(resp.finishMessage, "")
-    }
 
-    func testMinimaxResponseSurfacesNonSuccessStatusMsg() async throws {
-        let response = """
+
+
+
+
+
+
+
+
+
+"""
         {"data":{"audio":""},"base_resp":{"status_code":1004,"status_msg":"invalid api key"}}
         """
-        let resp = try await client(.minimax, response: response).music
-            .model("music-2.6").generate("lofi hip hop")
 
-        XCTAssertEqual(resp.audio.count, 0)
-        XCTAssertEqual(resp.finishMessage, "invalid api key")
-    }
 
-    // MARK: - Vertex (MusicPredict shape: instances/parameters, base64 audio)
 
-    func testVertexBodyAndResponse() async throws {
-        let response = """
+
+
+
+
+
+
+
+"""
         {"predictions":[{"audioContent":"\(Self.wavBase64)","mimeType":"audio/wav"}]}
         """
-        let resp = try await client(.vertex, response: response).music
-            .model("lyria-002").generate("ambient soundscape")
 
-        XCTAssertEqual(try capturedBody(), .object([
-            ("instances", .array([.object([("prompt", .string("ambient soundscape"))])])),
-            ("parameters", .object([("sampleCount", .int(1))])),
-        ]))
-        XCTAssertEqual(resp.audio.count, 1)
-        XCTAssertEqual(resp.audio[0].mimeType, "audio/wav")
-        XCTAssertEqual(resp.audio[0].bytes.count, 44)
-    }
 
-    func testVertexFoldsLyricsIntoPrompt() async throws {
-        _ = try await client(.vertex, response: "{\"predictions\":[]}").music
-            .model("lyria-002").lyrics("hum along").generate("gentle piece")
 
-        // Lyria 2 has no lyrics wire-slot; lyrics fold into the prompt text.
-        XCTAssertEqual(
-            try capturedBody().lookup("instances[0].prompt"),
-            .string("gentle piece\nhum along")
-        )
-    }
 
-    // MARK: - Gemini (MusicGenerateContent shape: contents/parts, base64 audio)
 
-    func testGeminiBodyAndResponse() async throws {
-        let response = """
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
         {"candidates":[{"finishReason":"STOP","content":{"parts":[\
         {"text":"la la la"},\
         {"inlineData":{"mimeType":"audio/mpeg","data":"\(Self.wavBase64)"}}]}}]}
         """
-        let resp = try await client(.google, response: response).music
-            .model("lyria-3-pro-preview").generate("an upbeat melody")
 
-        XCTAssertEqual(
-            try capturedBody(),
-            .object([
-                ("contents", .array([.object([("parts", .array([
-                    .object([("text", .string("an upbeat melody"))]),
-                ]))])])),
-                ("generationConfig", .object([("responseModalities", .array([.string("AUDIO")]))])),
-            ])
-        )
-        XCTAssertEqual(resp.audio.count, 1)
-        XCTAssertEqual(resp.audio[0].mimeType, "audio/mpeg")
-        XCTAssertEqual(resp.text, "la la la")
-        XCTAssertEqual(resp.finishReason, "STOP")
-    }
 
-    // MARK: - Raw opt-in + middleware
 
-    func testRawOptInPopulatesRaw() async throws {
-        let response = """
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
         {"data":{"audio":"\(Self.hexEncode(Self.fakeMP3))"},"base_resp":{"status_code":0,"status_msg":"success"}}
         """
-        let resp = try await client(.minimax, response: response).music
-            .model("music-2.6").raw().generate("lofi hip hop")
 
-        XCTAssertNotNil(resp.raw)
-        XCTAssertEqual(resp.raw?.lookup("base_resp.status_code"), .int(0))
-    }
 
-    func testMiddlewareFiresPreAndPost() async throws {
-        let response = """
+
+
+
+
+
+
+"""
         {"data":{"audio":"\(Self.hexEncode(Self.fakeMP3))"},"base_resp":{"status_code":0,"status_msg":"success"}}
         """
         actor Recorder {
@@ -169,7 +169,7 @@ final class MusicTests: XCTestCase {
                 return nil
             }
             .generate("lofi hip hop")
-        // Give the detached record tasks a moment to land.
+        //
         try await Task.sleep(nanoseconds: 20_000_000)
         let ops = await recorder.ops
         XCTAssertTrue(ops.contains(.pre))
@@ -185,11 +185,11 @@ final class MusicTests: XCTestCase {
                 .generate("lofi hip hop")
             XCTFail("expected a veto")
         } catch is MiddlewareVeto {
-            // expected
+            //
         }
     }
 
-    // MARK: - Validation
+    //
 
     func testRequiresModel() async throws {
         do {
