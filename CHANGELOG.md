@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-07-19
+
+### Security
+
+- Fixed: an API key could appear in error output. On a URL-parse failure for a query-parameter-authenticated provider (Google), the validation error embedded the full request URL — which carries the key as a `?key=` query parameter. The message no longer includes the URL. (Note: on a network-level failure, Foundation's own `NSError` may still carry the URL in its `userInfo`; avoid logging raw transport errors with `print(error)` / `String(describing:)`.)
+
 ## [1.0.0] — 2026-07-19
 
 First release. Apple-only (Foundation + CryptoKit + URLSession, no external
