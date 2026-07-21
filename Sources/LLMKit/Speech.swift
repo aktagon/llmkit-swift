@@ -13,6 +13,7 @@ import Foundation
 ///
 ///
 ///
+///
 public struct Speech: Sendable {
     let provider: ProviderName
     let apiKey: String
@@ -20,6 +21,7 @@ public struct Speech: Sendable {
     let http: HTTPClient
     var modelOverride: String?
     var voiceOverride: String?
+    var middleware: [MiddlewareFn] = []
 
     init(provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient) {
         self.provider = provider
@@ -35,6 +37,13 @@ public struct Speech: Sendable {
     ///
     public func voice(_ voice: String) -> Speech { with { $0.voiceOverride = voice } }
 
+    ///
+    public func addMiddleware(_ hook: @escaping MiddlewareFn) -> Speech {
+        with { $0.middleware.append(hook) }
+    }
+
+    ///
+    ///
     ///
     ///
     public func generate(_ text: String) async throws -> SpeechResponse {
@@ -64,29 +73,46 @@ public struct Speech: Sendable {
             throw LLMKitError.validation(field: "voice", message: "\(voice) is not a known voice for \(config.slug)")
         }
 
-        var headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
-        headers.append(("content-type", "application/json"))
+        let baseEvent = Event(op: .speechGeneration, provider: provider.rawValue, model: model)
+        let start = Date()
+        try Middleware.firePre(middleware, baseEvent)
 
-        let base = baseURLOverride ?? config.baseURL
-        let endpoint = sgCfg.genEndpoint.isEmpty ? config.endpoint : sgCfg.genEndpoint
-        let url = endpoint.hasPrefix("http") ? endpoint : base + endpoint
+        var postEvent = baseEvent
+        do {
+            var headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
+            headers.append(("content-type", "application/json"))
 
-        let body = sgCfg.wireShape == "SpeechOpenAI"
-            ? buildOpenAIBody(model: model, voice: voice, text: text)
-            : buildInworldBody(model: model, voice: voice, text: text)
+            let base = baseURLOverride ?? config.baseURL
+            let endpoint = sgCfg.genEndpoint.isEmpty ? config.endpoint : sgCfg.genEndpoint
+            let url = endpoint.hasPrefix("http") ? endpoint : base + endpoint
 
-        //
-        //
-        let (statusCode, data) = try await http.postJSON(url: url, body: body, headers: headers)
-        guard (200..<300).contains(statusCode) else {
-            throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
+            let body = sgCfg.wireShape == "SpeechOpenAI"
+                ? buildOpenAIBody(model: model, voice: voice, text: text)
+                : buildInworldBody(model: model, voice: voice, text: text)
+
+            //
+            //
+            //
+            let (statusCode, data) = try await http.postJSON(url: url, body: body, headers: headers)
+            guard (200..<300).contains(statusCode) else {
+                throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
+            }
+            let response = try parseResponse(
+                provider: config.slug,
+                encoding: sgCfg.audioResponseEncoding,
+                fallbackMime: modelDef.outputMime,
+                body: data
+            )
+            postEvent.duration = Date().timeIntervalSince(start)
+            postEvent.usage = response.usage
+            Middleware.firePost(middleware, postEvent)
+            return response
+        } catch {
+            postEvent.duration = Date().timeIntervalSince(start)
+            Middleware.setError(&postEvent, error)
+            Middleware.firePost(middleware, postEvent)
+            throw error
         }
-        return try parseResponse(
-            provider: config.slug,
-            encoding: sgCfg.audioResponseEncoding,
-            fallbackMime: modelDef.outputMime,
-            body: data
-        )
     }
 
     ///
