@@ -44,6 +44,7 @@ public struct Transcription: Sendable {
     let baseURLOverride: String?
     let http: HTTPClient
     var modelOverride: String?
+    var middleware: [MiddlewareFn] = []
 
     init(provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient) {
         self.provider = provider
@@ -55,6 +56,15 @@ public struct Transcription: Sendable {
     /// Select the transcription model (required by the synchronous path; the
     /// asynchronous provider infers it).
     public func model(_ model: String) -> Transcription { with { $0.modelOverride = model } }
+
+    /// Register a middleware hook (observation + pre-phase veto). The
+    /// `transcription` op fires around the OUTBOUND request only — the async
+    /// `submit` and the sync `transcribe`. `TranscriptionJob.wait` / `.poll`
+    /// only read job state and do not fire (mirrors `videoGeneration` /
+    /// `batchSubmit`).
+    public func addMiddleware(_ hook: @escaping MiddlewareFn) -> Transcription {
+        with { $0.middleware.append(hook) }
+    }
 
     // MARK: - Async submit (AssemblyAI)
 
@@ -85,48 +95,65 @@ public struct Transcription: Sendable {
         let base = baseURLOverride ?? config.baseURL
         let headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
 
-        // Upload hop (STT-005): a bytes part is uploaded first to obtain a URL the
-        // submit body can reference. URL parts skip this entirely.
-        let audioURL: String
-        if let raw = bytes {
-            guard !tcCfg.uploadEndpoint.isEmpty else {
-                throw LLMKitError.validation(
-                    field: "parts",
-                    message: "\(config.slug) does not accept audio bytes; pass a public audio URL"
-                )
-            }
-            let (status, body) = try await http.postBytes(
-                url: base + tcCfg.uploadEndpoint, body: Data(raw), headers: headers
+        // The upload endpoint is a pre-flight fact, so an unsupported bytes part
+        // is rejected before the request middleware fires.
+        if bytes != nil, tcCfg.uploadEndpoint.isEmpty {
+            throw LLMKitError.validation(
+                field: "parts",
+                message: "\(config.slug) does not accept audio bytes; pass a public audio URL"
             )
-            guard (200..<300).contains(status) else {
-                throw LLMKitError.api(provider: "transcription_upload", statusCode: status, message: String(decoding: body, as: UTF8.self))
-            }
-            let up = try JSONValue.parse(String(decoding: body, as: UTF8.self))
-            let uploaded = up.stringValue(at: "upload_url")
-            guard !uploaded.isEmpty else {
-                throw LLMKitError.unsupported("transcription upload: response carried no upload_url")
-            }
-            audioURL = uploaded
-        } else {
-            audioURL = url
         }
 
-        var submitHeaders = headers
-        submitHeaders.append(("content-type", "application/json"))
-        let body = JSONValue.object([("audio_url", .string(audioURL))])
-        let (status, responseBody) = try await http.postJSON(
-            url: base + tcCfg.submitEndpoint, body: body, headers: submitHeaders
-        )
-        guard (200..<300).contains(status) else {
-            throw LLMKitError.api(provider: "transcription_submit", statusCode: status, message: String(decoding: responseBody, as: UTF8.self))
+        let baseEvent = Event(op: .transcription, provider: provider.rawValue, model: modelOverride ?? "")
+        let start = Date()
+        try Middleware.firePre(middleware, baseEvent)
+
+        var postEvent = baseEvent
+        do {
+            // Upload hop (STT-005): a bytes part is uploaded first to obtain a URL
+            // the submit body can reference. URL parts skip this entirely.
+            let audioURL: String
+            if let raw = bytes {
+                let (status, body) = try await http.postBytes(
+                    url: base + tcCfg.uploadEndpoint, body: Data(raw), headers: headers
+                )
+                guard (200..<300).contains(status) else {
+                    throw LLMKitError.api(provider: "transcription_upload", statusCode: status, message: String(decoding: body, as: UTF8.self))
+                }
+                let up = try JSONValue.parse(String(decoding: body, as: UTF8.self))
+                let uploaded = up.stringValue(at: "upload_url")
+                guard !uploaded.isEmpty else {
+                    throw LLMKitError.unsupported("transcription upload: response carried no upload_url")
+                }
+                audioURL = uploaded
+            } else {
+                audioURL = url
+            }
+
+            var submitHeaders = headers
+            submitHeaders.append(("content-type", "application/json"))
+            let body = JSONValue.object([("audio_url", .string(audioURL))])
+            let (status, responseBody) = try await http.postJSON(
+                url: base + tcCfg.submitEndpoint, body: body, headers: submitHeaders
+            )
+            guard (200..<300).contains(status) else {
+                throw LLMKitError.api(provider: "transcription_submit", statusCode: status, message: String(decoding: responseBody, as: UTF8.self))
+            }
+            let parsed = try JSONValue.parse(String(decoding: responseBody, as: UTF8.self))
+            let id = parsed.stringValue(at: tcCfg.submitHandleField)
+            guard !id.isEmpty else {
+                throw LLMKitError.unsupported("transcription submit: empty handle field \"\(tcCfg.submitHandleField)\"")
+            }
+            postEvent.duration = Date().timeIntervalSince(start)
+            Middleware.firePost(middleware, postEvent)
+            let handle = TranscriptionHandle(id: id, provider: provider)
+            return TranscriptionJob(handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride)
+        } catch {
+            postEvent.duration = Date().timeIntervalSince(start)
+            Middleware.setError(&postEvent, error)
+            Middleware.firePost(middleware, postEvent)
+            throw error
         }
-        let parsed = try JSONValue.parse(String(decoding: responseBody, as: UTF8.self))
-        let id = parsed.stringValue(at: tcCfg.submitHandleField)
-        guard !id.isEmpty else {
-            throw LLMKitError.unsupported("transcription submit: empty handle field \"\(tcCfg.submitHandleField)\"")
-        }
-        let handle = TranscriptionHandle(id: id, provider: provider)
-        return TranscriptionJob(handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride)
     }
 
     // MARK: - Sync transcribe (OpenAI)
@@ -164,17 +191,34 @@ public struct Transcription: Sendable {
         // extension.
         let mime = media.mimeType.isEmpty ? "application/octet-stream" : media.mimeType
         let filename = "audio.\(Self.audioExtForMime(media.mimeType))"
-        let (status, body) = try await http.postMultipart(
-            url: base + tcCfg.submitEndpoint,
-            fields: [("model", model), ("response_format", "verbose_json")],
-            file: ("file", filename, mime, Data(media.bytes)),
-            headers: headers
-        )
-        guard (200..<300).contains(status) else {
-            throw LLMKitError.api(provider: config.slug, statusCode: status, message: String(decoding: body, as: UTF8.self))
+
+        let baseEvent = Event(op: .transcription, provider: provider.rawValue, model: model)
+        let start = Date()
+        try Middleware.firePre(middleware, baseEvent)
+
+        var postEvent = baseEvent
+        do {
+            let (status, body) = try await http.postMultipart(
+                url: base + tcCfg.submitEndpoint,
+                fields: [("model", model), ("response_format", "verbose_json")],
+                file: ("file", filename, mime, Data(media.bytes)),
+                headers: headers
+            )
+            guard (200..<300).contains(status) else {
+                throw LLMKitError.api(provider: config.slug, statusCode: status, message: String(decoding: body, as: UTF8.self))
+            }
+            let raw = try JSONValue.parse(String(decoding: body, as: UTF8.self))
+            let response = Self.resultFromOpenAI(raw)
+            postEvent.duration = Date().timeIntervalSince(start)
+            postEvent.usage = response.usage
+            Middleware.firePost(middleware, postEvent)
+            return response
+        } catch {
+            postEvent.duration = Date().timeIntervalSince(start)
+            Middleware.setError(&postEvent, error)
+            Middleware.firePost(middleware, postEvent)
+            throw error
         }
-        let raw = try JSONValue.parse(String(decoding: body, as: UTF8.self))
-        return Self.resultFromOpenAI(raw)
     }
 
     /// Clone-on-chain helper: copy, mutate, return.
