@@ -19,4 +19,6 @@ public enum MiddlewareOp: String, Sendable, Equatable {
     case musicGeneration = "music_generation"
     case videoGeneration = "video_generation"
     case modelsList = "models_list"
+    case speechGeneration = "speech_generation"
+    case transcription = "transcription"
 }
