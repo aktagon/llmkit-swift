@@ -99,7 +99,7 @@ public final class Agent {
                     throw ResponseParser.parseError(config: config, statusCode: status, body: data)
                 }
                 raw = try JSONValue.parse(String(decoding: data, as: UTF8.self))
-                parsed = try ResponseParser.parse(config: config, body: data)
+                parsed = try decodeResponse(provider, config.chatWireShape, data)
             } catch {
                 llmPost.duration = Date().timeIntervalSince(llmStart)
                 Middleware.setError(&llmPost, error)

@@ -53,6 +53,85 @@ enum JSONObject {
         set(&obj, head, .object(child))
     }
 
+    /// Place `newValue` at a dotted `path` with array index support
+    /// (`choices[0].message.content`), creating intermediate objects and array
+    /// elements as it descends. It is the navigate-or-create inverse of
+    /// `JSONValue.lookup` and walks the identical generated path strings
+    /// (ADR-076 SYM-005). Unlike `insertNested`, ANY segment may be indexed —
+    /// Google's response text path is `candidates[0].content.parts[0].text`, two
+    /// array levels created in one descent.
+    ///
+    /// An empty path (the provider declares no location for this field) or an
+    /// empty value is a no-op: there is nothing to write, and materializing a
+    /// zero would invent a field the provider never sent.
+    static func setWirePath(_ obj: inout [(String, JSONValue)], _ path: String, _ newValue: JSONValue) {
+        if path.isEmpty || isEmptyWireValue(newValue) { return }
+        setWireParts(&obj, path.split(separator: ".").map(String.init), newValue)
+    }
+
+    private static func setWireParts(
+        _ obj: inout [(String, JSONValue)],
+        _ parts: [String],
+        _ newValue: JSONValue
+    ) {
+        guard let head = parts.first else { return }
+        let rest = Array(parts.dropFirst())
+        let (field, index) = splitIndex(head)
+
+        guard let index else {
+            if rest.isEmpty {
+                set(&obj, field, newValue)
+                return
+            }
+            var child = childObject(obj, field)
+            setWireParts(&child, rest, newValue)
+            set(&obj, field, .object(child))
+            return
+        }
+
+        var items: [JSONValue] = []
+        if case let .array(existing)? = value(obj, field) { items = existing }
+        while items.count <= index { items.append(.null) }
+        if rest.isEmpty {
+            items[index] = newValue
+        } else {
+            var child: [(String, JSONValue)] = []
+            if case let .object(existing) = items[index] { child = existing }
+            setWireParts(&child, rest, newValue)
+            items[index] = .object(child)
+        }
+        set(&obj, field, .array(items))
+    }
+
+    /// Split a `field[index]` segment into its parts; the index is nil for a
+    /// plain object key.
+    private static func splitIndex(_ part: String) -> (field: String, index: Int?) {
+        guard let open = part.firstIndex(of: "["), let close = part.firstIndex(of: "]"),
+              let index = Int(part[part.index(after: open)..<close]) else {
+            return (part, nil)
+        }
+        return (String(part[part.startIndex..<open]), index)
+    }
+
+    /// The object at `key`, or a fresh one when absent or mistyped.
+    private static func childObject(_ obj: [(String, JSONValue)], _ key: String) -> [(String, JSONValue)] {
+        if case let .object(existing)? = value(obj, key) { return existing }
+        return []
+    }
+
+    /// Whether `candidate` is the zero of its canonical type. Empty values are
+    /// skipped rather than written, so the encoder never claims a provider
+    /// reported zero tokens when the canonical `Response` simply had none.
+    private static func isEmptyWireValue(_ candidate: JSONValue) -> Bool {
+        switch candidate {
+        case let .string(text): return text.isEmpty
+        case let .int(number): return number == 0
+        case let .double(number): return number == 0
+        case .null: return true
+        default: return false
+        }
+    }
+
     /// Merge `extras` into the object that CONTAINS the leaf of `path`: for
     /// "a.b.c" they land in obj["a"]["b"]; for a top-level path, in obj.
     /// Mirror of `merge_into_parent`.
