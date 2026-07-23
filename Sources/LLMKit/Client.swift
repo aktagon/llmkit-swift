@@ -325,7 +325,7 @@ public struct Text: Sendable {
             guard (200..<300).contains(statusCode) else {
                 throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
             }
-            let response = try ResponseParser.parse(config: config, body: data)
+            let response = try decodeResponse(provider, wireShape, data)
             postEvent.duration = Date().timeIntervalSince(start)
             postEvent.usage = response.usage
             Middleware.firePost(options.middleware, postEvent)
