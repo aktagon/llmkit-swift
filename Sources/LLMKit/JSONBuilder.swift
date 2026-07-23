@@ -56,6 +56,85 @@ enum JSONObject {
     ///
     ///
     ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    ///
+    static func setWirePath(_ obj: inout [(String, JSONValue)], _ path: String, _ newValue: JSONValue) {
+        if path.isEmpty || isEmptyWireValue(newValue) { return }
+        setWireParts(&obj, path.split(separator: ".").map(String.init), newValue)
+    }
+
+    private static func setWireParts(
+        _ obj: inout [(String, JSONValue)],
+        _ parts: [String],
+        _ newValue: JSONValue
+    ) {
+        guard let head = parts.first else { return }
+        let rest = Array(parts.dropFirst())
+        let (field, index) = splitIndex(head)
+
+        guard let index else {
+            if rest.isEmpty {
+                set(&obj, field, newValue)
+                return
+            }
+            var child = childObject(obj, field)
+            setWireParts(&child, rest, newValue)
+            set(&obj, field, .object(child))
+            return
+        }
+
+        var items: [JSONValue] = []
+        if case let .array(existing)? = value(obj, field) { items = existing }
+        while items.count <= index { items.append(.null) }
+        if rest.isEmpty {
+            items[index] = newValue
+        } else {
+            var child: [(String, JSONValue)] = []
+            if case let .object(existing) = items[index] { child = existing }
+            setWireParts(&child, rest, newValue)
+            items[index] = .object(child)
+        }
+        set(&obj, field, .array(items))
+    }
+
+    ///
+    ///
+    private static func splitIndex(_ part: String) -> (field: String, index: Int?) {
+        guard let open = part.firstIndex(of: "["), let close = part.firstIndex(of: "]"),
+              let index = Int(part[part.index(after: open)..<close]) else {
+            return (part, nil)
+        }
+        return (String(part[part.startIndex..<open]), index)
+    }
+
+    ///
+    private static func childObject(_ obj: [(String, JSONValue)], _ key: String) -> [(String, JSONValue)] {
+        if case let .object(existing)? = value(obj, key) { return existing }
+        return []
+    }
+
+    ///
+    ///
+    ///
+    private static func isEmptyWireValue(_ candidate: JSONValue) -> Bool {
+        switch candidate {
+        case let .string(text): return text.isEmpty
+        case let .int(number): return number == 0
+        case let .double(number): return number == 0
+        case .null: return true
+        default: return false
+        }
+    }
+
+    ///
+    ///
+    ///
     static func mergeIntoParent(
         _ obj: inout [(String, JSONValue)],
         _ path: String,

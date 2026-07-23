@@ -314,7 +314,10 @@ struct BatchAdapter: JobAdapter {
                 }
                 responseText = inner.serialized()
             }
-            guard let response = try? ResponseParser.parse(config: spec, body: Data(responseText.utf8)) else {
+            //
+            //
+            //
+            guard let response = try? decodeResponse(spec.name, "", Data(responseText.utf8)) else {
                 continue
             }
             responses.append(response)
