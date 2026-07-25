@@ -118,6 +118,39 @@ extension JSONValue {
         default: return 0.0
         }
     }
+
+    /// Integer at a dotted path, or `nil` when the provider declares no path
+    /// for this field or the response did not carry it (ADR-081). The
+    /// distinction `intValue(at:)` cannot draw: a provider reporting
+    /// `cached_tokens: 0` and a provider that never mentions caching are
+    /// different claims, and neither of them is the number zero.
+    public func optInt(at path: String) -> Int? {
+        guard !path.isEmpty else { return nil }
+        switch lookup(path) {
+        case let .int(value): return Int(value)
+        case let .double(value): return Int(value)
+        default: return nil
+        }
+    }
+
+    /// `optInt(at:)` for the fractional provider-reported USD cost (ADR-027).
+    /// An unreported cost is not a free request (AVAIL-007).
+    public func optDouble(at path: String) -> Double? {
+        guard !path.isEmpty else { return nil }
+        switch lookup(path) {
+        case let .double(value): return value
+        case let .int(value): return Double(value)
+        default: return nil
+        }
+    }
+
+    /// String at a dotted path as an optional canonical signal: an empty
+    /// extraction means the provider declared no path or sent no value, which
+    /// is absence, not the empty string.
+    public func optString(at path: String) -> String? {
+        let value = stringValue(at: path)
+        return value.isEmpty ? nil : value
+    }
 }
 
 // MARK: - Serialization (deterministic, never exponent form)
@@ -176,11 +209,41 @@ extension JSONValue {
             return String(format: "%.1f", value)
         }
         let text = String(value)
-        // Swift's Double description does not use exponent form in the ranges
-        // this SDK emits (temperature, penalties); guard anyway.
-        return text.contains("e") || text.contains("E")
-            ? String(format: "%f", value)
-            : text
+        // `String(Double)` gives the SHORTEST representation that round-trips,
+        // but uses exponent form for small magnitudes. The old fallback was
+        // `%f` — fixed at six decimal places, which silently truncated: a
+        // provider-reported cost of 4.2e-06 rendered as 0.000004, losing the
+        // 2 and disagreeing with the six SDKs that print it in full. Costs are
+        // routinely this small, and no fixture exercised one until ADR-081
+        // slice 4.1a captured a real OpenRouter cost.
+        //
+        // Expanding the exponent by hand keeps the shortest round-tripping
+        // digits AND drops the exponent, instead of trading one for the other.
+        guard text.contains("e") || text.contains("E") else { return text }
+        return expandExponent(text)
+    }
+
+    /// Rewrite `"4.2e-06"` as `"0.0000042"` by shifting the decimal point.
+    /// Digit-exact: it moves the point, it does not re-round.
+    private static func expandExponent(_ text: String) -> String {
+        let parts = text.lowercased().split(separator: "e")
+        guard parts.count == 2, let exponent = Int(parts[1]) else { return text }
+        let negative = parts[0].hasPrefix("-")
+        let mantissa = parts[0].drop(while: { $0 == "-" || $0 == "+" })
+
+        var digits = Array(mantissa.filter { $0 != "." })
+        // Where the point sits in `digits` before the shift.
+        let dot = mantissa.firstIndex(of: ".")
+            .map { mantissa.distance(from: mantissa.startIndex, to: $0) } ?? digits.count
+        var point = dot + exponent
+
+        while point <= 0 { digits.insert("0", at: 0); point += 1 }
+        while point > digits.count { digits.append("0") }
+
+        let whole = String(digits[0..<point])
+        let fraction = String(digits[point...])
+        let body = fraction.isEmpty ? whole + ".0" : whole + "." + fraction
+        return negative ? "-" + body : body
     }
 }
 

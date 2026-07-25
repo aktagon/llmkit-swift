@@ -271,14 +271,14 @@ public struct Music: Sendable {
                 audio.append(AudioData(mimeType: mime, bytes: [UInt8](decoded)))
             }
         }
-        return MusicResponse(audio: audio, text: "", usage: Usage(), finishReason: finishReason, finishMessage: "", raw: nil)
+        return MusicResponse(audio: audio, text: "", usage: Usage(), finishReason: optString(finishReason), finishMessage: nil, raw: nil)
     }
 
     /// Gemini responses. Walks candidates[0].content.parts, decoding each
     /// inlineData audio part and concatenating text parts (generated lyrics).
     private func parseGeminiResponse(_ raw: JSONValue, _ fallbackMime: String) -> MusicResponse {
         guard case let .array(candidates)? = raw.member("candidates"), let first = candidates.first else {
-            return MusicResponse(audio: [], text: "", usage: Usage(), finishReason: "", finishMessage: "", raw: nil)
+            return MusicResponse(audio: [], text: "", usage: Usage(), finishReason: nil, finishMessage: nil, raw: nil)
         }
         var finishReason = ""
         if case let .string(fr)? = first.member("finishReason") { finishReason = fr }
@@ -297,7 +297,7 @@ public struct Music: Sendable {
                 if case let .string(t)? = part.member("text"), !t.isEmpty { text += t }
             }
         }
-        return MusicResponse(audio: audio, text: text, usage: Usage(), finishReason: finishReason, finishMessage: "", raw: nil)
+        return MusicResponse(audio: audio, text: text, usage: Usage(), finishReason: optString(finishReason), finishMessage: nil, raw: nil)
     }
 
     /// MiniMax responses. Shape:
@@ -311,7 +311,7 @@ public struct Music: Sendable {
         if case let .string(msg)? = raw.lookup("base_resp.status_msg"), !msg.isEmpty, msg != "success" {
             finishMessage = msg
         }
-        return MusicResponse(audio: audio, text: "", usage: Usage(), finishReason: "", finishMessage: finishMessage, raw: nil)
+        return MusicResponse(audio: audio, text: "", usage: Usage(), finishReason: nil, finishMessage: optString(finishMessage), raw: nil)
     }
 
     /// Decode a hex string to bytes. Returns nil on odd length or any non-hex

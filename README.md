@@ -37,7 +37,8 @@ let resp = try await client.text
     .prompt("Why is the sky blue?")
 
 print(resp.text)
-print("\(resp.usage.input) input tokens")
+// Optional: nil means the provider reported no count, not a count of 0.
+print("\(resp.usage.input.map(String.init) ?? "unreported") input tokens")
 ```
 
 One mental model — `client.<capability>.<chain>.<terminal>` — across every capability.
@@ -69,9 +70,18 @@ let resp = try await client.text
     .prompt("What is 2+2?")
 
 print(resp.text)              // "4"
-print(resp.usage.input)       // prompt tokens
-print(resp.usage.output)      // completion tokens
-print(resp.usage.cacheRead)   // tokens served from cache
+// Every Usage dimension is optional. nil means the provider did not report
+// the value, which is NOT the same as reporting zero: a provider that says it
+// used no cached tokens and one that never mentions caching are different
+// facts, and a plain 0 cannot tell you which you have.
+resp.usage.input      // Int? — prompt tokens
+resp.usage.output     // Int? — completion tokens
+resp.usage.cacheRead  // Int? — tokens served from cache
+resp.usage.cost       // Double? — provider-reported USD; nil is unreported, never "free"
+
+if let cached = resp.usage.cacheRead {
+    print("\(cached) tokens served from cache")
+}
 print(resp.usage.cacheWrite)  // tokens written to cache (Anthropic explicit)
 print(resp.usage.reasoning)   // internal reasoning tokens (OpenAI o-series, Gemini 2.5+)
 ```
@@ -90,7 +100,10 @@ let resp = try await client.text
         print(chunk, terminator: "")
     }
 
-print("\nUsage: \(resp.usage.input) in / \(resp.usage.output) out")
+// Token counts are optional: nil means the provider did not report
+// the value, which is not the same as reporting zero.
+let shown = { (v: Int?) in v.map(String.init) ?? "unreported" }
+print("\nUsage: \(shown(resp.usage.input)) in / \(shown(resp.usage.output)) out")
 ```
 
 ### Agent — tool loop
