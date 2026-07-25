@@ -183,7 +183,7 @@ public struct Speech: Sendable {
         return SpeechResponse(
             audio: AudioData(mimeType: fallbackMime, bytes: bytes),
             usage: Usage(),
-            finishReason: ""
+            finishReason: nil
         )
     }
 }

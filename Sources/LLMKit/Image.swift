@@ -414,7 +414,7 @@ public struct Image: Sendable {
         )
         return ImageResponse(
             images: images, text: revised.joined(separator: "\n"), usage: usage,
-            finishReason: "", finishMessage: "", raw: nil
+            finishReason: nil, finishMessage: nil, raw: nil
         )
     }
 
@@ -437,7 +437,7 @@ public struct Image: Sendable {
         }
         return ImageResponse(
             images: images, text: "", usage: Usage(),
-            finishReason: finishReason, finishMessage: "", raw: nil
+            finishReason: optString(finishReason), finishMessage: nil, raw: nil
         )
     }
 
@@ -469,7 +469,7 @@ public struct Image: Sendable {
         )
         return ImageResponse(
             images: images, text: text, usage: usage,
-            finishReason: finishReason, finishMessage: finishMessage, raw: nil
+            finishReason: optString(finishReason), finishMessage: optString(finishMessage), raw: nil
         )
     }
 

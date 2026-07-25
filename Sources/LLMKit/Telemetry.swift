@@ -81,8 +81,13 @@ enum TelemetryRuntime {
         _ event: Event, traceId: String, spanId: String, startNano: String, endNano: String
     ) -> String {
         let op = TelemetryConst.operationName(event.op) ?? "\(event.op)"
-        let input = event.usage?.input ?? 0
-        let output = event.usage?.output ?? 0
+        // NOT `?? 0`: an event that reported no usage and an event that
+        // reported zero tokens must produce different spans (AVAIL-006). The
+        // outer optional (no usage object on this event) and the inner one
+        // (this dimension unreported) both mean "not reported", so they
+        // flatten — but they flatten to nil, never to zero.
+        let input = event.usage?.input
+        let output = event.usage?.output
         return buildOTLPTraces(
             operationName: op, provider: event.provider, model: event.model,
             inputTokens: input, outputTokens: output, errorType: event.errType ?? "",
@@ -108,7 +113,7 @@ enum TelemetryRuntime {
     /// (code 2), omitted on success.
     static func buildOTLPTraces(
         operationName: String, provider: String, model: String,
-        inputTokens: Int, outputTokens: Int, errorType: String,
+        inputTokens: Int?, outputTokens: Int?, errorType: String,
         traceId: String, spanId: String, startNano: String, endNano: String
     ) -> String {
         var attributes: [JSONValue] = [
@@ -116,8 +121,12 @@ enum TelemetryRuntime {
             stringAttr(TelemetryConst.otelAttrProvider, provider),
             stringAttr(TelemetryConst.otelAttrModel, model),
         ]
-        if inputTokens > 0 { attributes.append(intAttr(TelemetryConst.otelUsageInput, inputTokens)) }
-        if outputTokens > 0 { attributes.append(intAttr(TelemetryConst.otelUsageOutput, outputTokens)) }
+        // The gate is reported-ness, not magnitude. OTEL omits UNSET
+        // attributes; it does not omit zero-valued ones, so a provider that
+        // genuinely reported 0 input tokens must still export the attribute.
+        // The old `> 0` test conflated "nobody said" with "said none".
+        if let inputTokens { attributes.append(intAttr(TelemetryConst.otelUsageInput, inputTokens)) }
+        if let outputTokens { attributes.append(intAttr(TelemetryConst.otelUsageOutput, outputTokens)) }
         if !errorType.isEmpty { attributes.append(stringAttr(TelemetryConst.otelAttrErrType, errorType)) }
 
         var span: [(String, JSONValue)] = [

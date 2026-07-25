@@ -122,11 +122,18 @@ enum JSONObject {
     /// Whether `candidate` is the zero of its canonical type. Empty values are
     /// skipped rather than written, so the encoder never claims a provider
     /// reported zero tokens when the canonical `Response` simply had none.
+    /// Whether `candidate` carries nothing to write. `.null` is the caller
+    /// saying the field was never reported, so there is no location to fill.
+    ///
+    /// A numeric zero is NOT empty (ADR-081). It used to be: the encoder
+    /// dropped every zero, so a body that explicitly said `cached_tokens: 0`
+    /// round-tripped to one that omitted the field — the reader then had to
+    /// guess, and guessed zero, which happened to look right. Now absence
+    /// arrives as `.null` and a reported zero arrives as `.int(0)`, so the
+    /// encoder can tell them apart instead of inferring one from the other.
     private static func isEmptyWireValue(_ candidate: JSONValue) -> Bool {
         switch candidate {
         case let .string(text): return text.isEmpty
-        case let .int(number): return number == 0
-        case let .double(number): return number == 0
         case .null: return true
         default: return false
         }

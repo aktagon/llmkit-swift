@@ -25,28 +25,57 @@ public func decodeResponse(
     }
 
     let config = providerConfig(provider)
+    return Response(
+        text: raw.stringValue(at: config.responseTextPath),
+        usage: decodeUsage(raw, provider),
+        finishReason: raw.optString(at: config.finishReasonPath),
+        finishMessage: raw.optString(at: config.finishMessagePath),
+        raw: nil
+    )
+}
+
+/// Reads every canonical `Usage` dimension out of a provider response body.
+/// The ONE usage reader (ADR-076 SYM-004): the codec, the chat send path and
+/// the agent loop all call this, so a dimension cannot be read in one place and
+/// forgotten in another — which is how the agent loop came to accumulate a
+/// subset of the six across the SDK pack (BUG-045).
+///
+/// A dimension is `nil` when the provider declares no path for it OR the
+/// response did not carry it. Neither is zero.
+func decodeUsage(_ raw: JSONValue, _ provider: ProviderName) -> Usage {
+    let config = providerConfig(provider)
     // Cache-token and cost paths live in the generated Caching / Response
     // fact tables (mirroring Rust), not on ProviderSpec.
     let (cacheWritePath, cacheReadPath) = cacheUsagePaths(config.name)
-    let costPath = usageCostPath(config.name)
-
-    let usage = Usage(
-        input: raw.intValue(at: config.usageInputPath),
-        output: raw.intValue(at: config.usageOutputPath),
-        cacheWrite: cacheWritePath.isEmpty ? 0 : raw.intValue(at: cacheWritePath),
-        cacheRead: cacheReadPath.isEmpty ? 0 : raw.intValue(at: cacheReadPath),
-        reasoning: config.reasoningTokensPath.isEmpty ? 0 : raw.intValue(at: config.reasoningTokensPath),
-        cost: costPath.isEmpty
-            ? 0.0
-            : raw.doubleValue(at: costPath) * usageCostScale(config.name)
+    return Usage(
+        input: raw.optInt(at: config.usageInputPath),
+        output: raw.optInt(at: config.usageOutputPath),
+        cacheWrite: raw.optInt(at: cacheWritePath),
+        cacheRead: raw.optInt(at: cacheReadPath),
+        reasoning: raw.optInt(at: config.reasoningTokensPath),
+        // Scaling PRESERVES absence: an unreported cost stays unreported
+        // rather than becoming `0.0 * scale` (AVAIL-007).
+        cost: raw.optDouble(at: usageCostPath(config.name))
+            .map { $0 * usageCostScale(config.name) }
     )
+}
 
-    return Response(
-        text: raw.stringValue(at: config.responseTextPath),
-        usage: usage,
-        finishReason: config.finishReasonPath.isEmpty ? "" : raw.stringValue(at: config.finishReasonPath),
-        finishMessage: config.finishMessagePath.isEmpty ? "" : raw.stringValue(at: config.finishMessagePath),
-        raw: nil
+/// Adds two `Usage` values dimension-wise, ABSORBING per dimension
+/// (ADR-081 AVAIL-005): a total is only reported when EVERY summand reported
+/// it. Summing the turns that happened to report a dimension and presenting
+/// that as the total is the original defect at aggregate scale.
+func accumulateUsage(_ total: Usage, _ turn: Usage) -> Usage {
+    func add<T: AdditiveArithmetic>(_ a: T?, _ b: T?) -> T? {
+        guard let a, let b else { return nil }
+        return a + b
+    }
+    return Usage(
+        input: add(total.input, turn.input),
+        output: add(total.output, turn.output),
+        cacheWrite: add(total.cacheWrite, turn.cacheWrite),
+        cacheRead: add(total.cacheRead, turn.cacheRead),
+        reasoning: add(total.reasoning, turn.reasoning),
+        cost: add(total.cost, turn.cost)
     )
 }
 
@@ -75,18 +104,32 @@ public func encodeResponse(
 
     var raw: [(String, JSONValue)] = []
     JSONObject.setWirePath(&raw, config.responseTextPath, .string(response.text))
-    JSONObject.setWirePath(&raw, config.usageInputPath, .int(Int64(response.usage.input)))
-    JSONObject.setWirePath(&raw, config.usageOutputPath, .int(Int64(response.usage.output)))
-    JSONObject.setWirePath(&raw, cacheWritePath, .int(Int64(response.usage.cacheWrite)))
-    JSONObject.setWirePath(&raw, cacheReadPath, .int(Int64(response.usage.cacheRead)))
-    JSONObject.setWirePath(&raw, config.reasoningTokensPath, .int(Int64(response.usage.reasoning)))
+    JSONObject.setWirePath(&raw, config.usageInputPath, wire(response.usage.input))
+    JSONObject.setWirePath(&raw, config.usageOutputPath, wire(response.usage.output))
+    JSONObject.setWirePath(&raw, cacheWritePath, wire(response.usage.cacheWrite))
+    JSONObject.setWirePath(&raw, cacheReadPath, wire(response.usage.cacheRead))
+    JSONObject.setWirePath(&raw, config.reasoningTokensPath, wire(response.usage.reasoning))
     if costScale != 0 {
-        JSONObject.setWirePath(&raw, costPath, .double(response.usage.cost / costScale))
+        JSONObject.setWirePath(&raw, costPath, wire(response.usage.cost.map { $0 / costScale }))
     }
-    JSONObject.setWirePath(&raw, config.finishReasonPath, .string(response.finishReason))
-    JSONObject.setWirePath(&raw, config.finishMessagePath, .string(response.finishMessage))
+    JSONObject.setWirePath(&raw, config.finishReasonPath, wire(response.finishReason))
+    JSONObject.setWirePath(&raw, config.finishMessagePath, wire(response.finishMessage))
     return Data(JSONValue.object(raw).serialized().utf8)
 }
+
+/// A parsed signal string as an optional canonical field: an empty extraction
+/// means the provider declared no path or sent no value, which is absence, not
+/// the empty string. Swift promotes `String` to `String?` implicitly, so a bare
+/// `""` would compile and store a REPORTED empty string — the wrong side of the
+/// very distinction ADR-081 draws. Media parsers build a `String` accumulator
+/// and pass it through here at the container boundary.
+func optString(_ value: String) -> String? { value.isEmpty ? nil : value }
+
+// An unreported canonical field becomes `.null`, which `setWirePath` skips;
+// a reported value — zero included — becomes a real JSON value and is written.
+func wire(_ value: Int?) -> JSONValue { value.map { .int(Int64($0)) } ?? .null }
+func wire(_ value: Double?) -> JSONValue { value.map { .double($0) } ?? .null }
+func wire(_ value: String?) -> JSONValue { value.map { .string($0) } ?? .null }
 
 /// Refuses to encode a canonical field whose mapping is `OneWay` for this
 /// provider — the result set of CQ-WMAP-011 (ADR-076 SYM-007). Only one member
@@ -97,7 +140,10 @@ public func encodeResponse(
 /// stays usable and only the lying path fails. `field` and `message` carry the
 /// mapping's `canonicalPath` and `invertibilityNote` verbatim.
 func guardOneWayFields(_ provider: ProviderName, _ response: Response) throws {
-    if provider == .vertex, !response.finishReason.isEmpty {
+    // Non-empty, not merely present: the guard exists to refuse FABRICATION, and
+    // neither an unreported field nor a reported empty one would write anything
+    // (see `isEmptyWireValue`). Only a value that would reach the wire lies.
+    if provider == .vertex, let reason = response.finishReason, !reason.isEmpty {
         throw LLMKitError.validation(
             field: "response.finish_reason",
             message: "Vertex carries no finish-reason field. Its path reads predictions[0].raiFilteredReason — a safety-filter explanation surfaced AS the finish reason. Extraction is a deliberate fusion, so the reverse leg cannot decide whether a given canonical finish_reason originated as a safety verdict, and writing an ordinary stop signal into that field would fabricate one."
@@ -114,14 +160,16 @@ func guardOneWayFields(_ provider: ProviderName, _ response: Response) throws {
 func parseResponsesEnvelope(_ raw: JSONValue) -> Response {
     Response(
         text: extractResponsesText(raw),
+        // The Responses envelope carries no cache-write or cost field at all.
+        // That is not a zero: it is the provider never making the claim.
         usage: Usage(
-            input: raw.intValue(at: "usage.input_tokens"),
-            output: raw.intValue(at: "usage.output_tokens"),
-            cacheRead: raw.intValue(at: "usage.input_tokens_details.cached_tokens"),
-            reasoning: raw.intValue(at: "usage.output_tokens_details.reasoning_tokens")
+            input: raw.optInt(at: "usage.input_tokens"),
+            output: raw.optInt(at: "usage.output_tokens"),
+            cacheRead: raw.optInt(at: "usage.input_tokens_details.cached_tokens"),
+            reasoning: raw.optInt(at: "usage.output_tokens_details.reasoning_tokens")
         ),
-        finishReason: raw.stringValue(at: "status"),
-        finishMessage: "",
+        finishReason: raw.optString(at: "status"),
+        finishMessage: nil,
         raw: nil
     )
 }
@@ -140,11 +188,11 @@ func encodeResponsesEnvelope(_ response: Response) -> [(String, JSONValue)] {
             ])])),
         ])])))
     }
-    JSONObject.setWirePath(&raw, "usage.input_tokens", .int(Int64(response.usage.input)))
-    JSONObject.setWirePath(&raw, "usage.output_tokens", .int(Int64(response.usage.output)))
-    JSONObject.setWirePath(&raw, "usage.input_tokens_details.cached_tokens", .int(Int64(response.usage.cacheRead)))
-    JSONObject.setWirePath(&raw, "usage.output_tokens_details.reasoning_tokens", .int(Int64(response.usage.reasoning)))
-    JSONObject.setWirePath(&raw, "status", .string(response.finishReason))
+    JSONObject.setWirePath(&raw, "usage.input_tokens", wire(response.usage.input))
+    JSONObject.setWirePath(&raw, "usage.output_tokens", wire(response.usage.output))
+    JSONObject.setWirePath(&raw, "usage.input_tokens_details.cached_tokens", wire(response.usage.cacheRead))
+    JSONObject.setWirePath(&raw, "usage.output_tokens_details.reasoning_tokens", wire(response.usage.reasoning))
+    JSONObject.setWirePath(&raw, "status", wire(response.finishReason))
     return raw
 }
 
