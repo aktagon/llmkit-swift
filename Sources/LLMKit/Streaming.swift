@@ -49,7 +49,9 @@ enum Streamer {
         let (finishEvent, finishPath) = parseStreamFinishPath(config.streamFinishReasonPath)
         var fullText = ""
         var finishReason = ""
-        var usage = Usage(input: 0, output: 0, cacheWrite: 0, cacheRead: 0, reasoning: 0, cost: 0)
+        // Nothing is reported until a usage frame arrives. Seeding with six
+        // zeroes claimed every dimension was reported before the first byte.
+        var usage = Usage()
         var currentEvent = ""
 
         for try await line in lines {
@@ -61,7 +63,7 @@ enum Streamer {
 
             // Data-level done sentinel (e.g. OpenAI [DONE]) is literal, not JSON.
             if !stream.doneSignal.isEmpty, data == stream.doneSignal {
-                return Response(text: fullText, usage: usage, finishReason: finishReason, finishMessage: "", raw: nil)
+                return Response(text: fullText, usage: usage, finishReason: optString(finishReason), finishMessage: nil, raw: nil)
             }
 
             let parsed = try? JSONValue.parse(data)
@@ -76,7 +78,7 @@ enum Streamer {
             }
 
             if stream.usesEventTypes, !stream.doneEvent.isEmpty, currentEvent == stream.doneEvent {
-                return Response(text: fullText, usage: usage, finishReason: finishReason, finishMessage: "", raw: nil)
+                return Response(text: fullText, usage: usage, finishReason: optString(finishReason), finishMessage: nil, raw: nil)
             }
 
             guard let parsed else { currentEvent = ""; continue }
@@ -86,26 +88,24 @@ enum Streamer {
                     let text = parsed.stringValue(at: stream.deltaTextPath)
                     if !text.isEmpty { fullText += text; onDelta(text) }
                 }
-                if currentEvent == stream.usageEvent, !stream.usageOutputPath.isEmpty {
-                    usage.output = parsed.intValue(at: stream.usageOutputPath)
-                    if !stream.usageInputPath.isEmpty { usage.input = parsed.intValue(at: stream.usageInputPath) }
+                if currentEvent == stream.usageEvent {
+                    usage.output = parsed.optInt(at: stream.usageOutputPath)
+                    usage.input = parsed.optInt(at: stream.usageInputPath)
                 }
             } else {
                 let text = parsed.stringValue(at: stream.deltaTextPath)
                 if !text.isEmpty { fullText += text; onDelta(text) }
-                if !stream.usageInputPath.isEmpty {
-                    let value = parsed.intValue(at: stream.usageInputPath)
-                    if value > 0 { usage.input = value }
-                }
-                if !stream.usageOutputPath.isEmpty {
-                    let value = parsed.intValue(at: stream.usageOutputPath)
-                    if value > 0 { usage.output = value }
-                }
+                // Usage arrives in ONE late frame; every earlier frame carries
+                // none. The gate is therefore "did this frame report it", not
+                // "is the number big enough" — the old `> 0` test also threw
+                // away a genuinely reported zero (AVAIL-001).
+                if let value = parsed.optInt(at: stream.usageInputPath) { usage.input = value }
+                if let value = parsed.optInt(at: stream.usageOutputPath) { usage.output = value }
             }
             currentEvent = ""
         }
 
-        return Response(text: fullText, usage: usage, finishReason: finishReason, finishMessage: "", raw: nil)
+        return Response(text: fullText, usage: usage, finishReason: optString(finishReason), finishMessage: nil, raw: nil)
     }
 
     /// Split `event_name:json.path` into its event-name prefix and the JSON

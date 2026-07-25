@@ -310,7 +310,7 @@ enum VideoWire {
             }
             return VideoResponse(
                 videos: [VideoData(mimeType: vmime, url: "", bytes: [UInt8](decoded), durationSeconds: 0)],
-                usage: Usage(), finishReason: "", finishMessage: "", raw: nil
+                usage: Usage(), finishReason: nil, finishMessage: nil, raw: nil
             )
         case "VideoMinimax":
             // Two-hop: the terminal poll carried a file_id, not a URL — resolve it
@@ -354,7 +354,7 @@ enum VideoWire {
     private static func single(mime: String, url: String, duration: Int) -> VideoResponse {
         VideoResponse(
             videos: [VideoData(mimeType: mime, url: url, bytes: [], durationSeconds: duration)],
-            usage: Usage(), finishReason: "", finishMessage: "", raw: nil
+            usage: Usage(), finishReason: nil, finishMessage: nil, raw: nil
         )
     }
 
@@ -388,6 +388,6 @@ enum VideoWire {
 extension VideoResponse {
     /// The empty video response (a failed or still-empty poll).
     static func `default`() -> VideoResponse {
-        VideoResponse(videos: [], usage: Usage(), finishReason: "", finishMessage: "", raw: nil)
+        VideoResponse(videos: [], usage: Usage(), finishReason: nil, finishMessage: nil, raw: nil)
     }
 }

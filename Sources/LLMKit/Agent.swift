@@ -70,7 +70,11 @@ public final class Agent {
         let url = RequestBuilder.buildURL(
             config: config, endpoint: config.endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
         )
-        var totalUsage = Usage(input: 0, output: 0, cacheWrite: 0, cacheRead: 0, reasoning: 0, cost: 0)
+        // Seeded from the first turn, not from an all-zero literal: absorbing
+        // addition's identity is a REPORTED zero, so seeding with six reported
+        // zeroes would claim every dimension was reported even when no turn
+        // reported any (ADR-081 AVAIL-005).
+        var totalUsage: Usage?
 
         for _ in 0..<maxToolIterations {
             // Fire llmRequest middleware around each turn of the loop.
@@ -109,13 +113,13 @@ public final class Agent {
             llmPost.duration = Date().timeIntervalSince(llmStart)
             llmPost.usage = parsed.usage
             Middleware.firePost(options.middleware, llmPost)
-            accumulate(&totalUsage, parsed.usage)
+            totalUsage = totalUsage.map { accumulateUsage($0, parsed.usage) } ?? parsed.usage
 
             let calls = Transforms.extractToolCalls(raw, config)
             if calls.isEmpty {
                 history.append(.text(role: "assistant", text: parsed.text))
                 return Response(
-                    text: parsed.text, usage: totalUsage,
+                    text: parsed.text, usage: totalUsage ?? Usage(),
                     finishReason: parsed.finishReason, finishMessage: parsed.finishMessage, raw: nil
                 )
             }
@@ -150,14 +154,5 @@ public final class Agent {
             }
         }
         throw LLMKitError.unsupported("max tool iterations (\(maxToolIterations)) reached")
-    }
-
-    private func accumulate(_ total: inout Usage, _ delta: Usage) {
-        total.input += delta.input
-        total.output += delta.output
-        total.cacheWrite += delta.cacheWrite
-        total.cacheRead += delta.cacheRead
-        total.reasoning += delta.reasoning
-        total.cost += delta.cost
     }
 }
