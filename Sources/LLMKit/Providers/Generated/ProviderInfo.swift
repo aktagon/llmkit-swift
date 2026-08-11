@@ -113,7 +113,7 @@ public func providerInfo(_ provider: ProviderName) -> ProviderInfo {
             id: .fireworks,
             slug: "fireworks",
             envVar: "FIREWORKS_API_KEY",
-            defaultModel: "accounts/fireworks/models/llama-v3p3-70b-instruct",
+            defaultModel: "accounts/fireworks/models/gpt-oss-120b",
             baseURL: "https://api.fireworks.ai/inference",
             browserCallable: false
         )
