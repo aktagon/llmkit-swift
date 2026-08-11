@@ -51,7 +51,7 @@ public func providerInfo(_ provider: ProviderName) -> ProviderInfo {
             slug: "azure",
             envVar: "AZURE_OPENAI_API_KEY",
             defaultModel: "gpt-4o",
-            baseURL: "https://REPLACE-WITH-YOUR-RESOURCE.openai.azure.com",
+            baseURL: "https://{resource}.openai.azure.com",
             browserCallable: false
         )
     case .bedrock:
