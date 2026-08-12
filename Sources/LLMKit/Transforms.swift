@@ -36,6 +36,13 @@ enum Transforms {
         case media(role: String, text: String, images: [InputImage], files: [FileRef])
         case calls([ToolCall])
         case result(ToolResult)
+        /// An assistant turn the provider itself serialized, replayed verbatim
+        /// instead of rebuilt (ADR-085). It carries the projection it replaces so
+        /// `ProviderTurnCapture.resolveTurns` can drop back to reconstruction when
+        /// the payload was captured under a different wire shape — the
+        /// alternative, deciding that at transform time, would put the same check
+        /// in two places. `indirect` because the payload nests a `Msg`.
+        indirect case turn(shape: String, wire: String, fallback: Msg)
     }
 
     /// True when any turn carries a file reference — drives the Anthropic
@@ -85,30 +92,87 @@ enum Transforms {
         }
 
         for msg in msgs {
-            switch msg {
-            case let .result(result):
-                messages.append(toolResultMessage(config, result))
-            case let .calls(calls):
-                messages.append(toolCallMessage(config, calls))
-            case let .text(role, text):
-                let content: JSONValue = bedrock
-                    ? .array([.object([("text", .string(text))])])
-                    : .string(text)
-                messages.append(.object([
-                    ("role", .string(mapRole(role, config))),
-                    ("content", content),
-                ]))
-            case let .media(role, text, images, files):
-                let content: JSONValue = bedrock
-                    ? .array(bedrockContentParts(images: images, text: text))
-                    : .array(flatContentParts(images: images, files: files, text: text, wireShape: wireShape))
-                messages.append(.object([
-                    ("role", .string(mapRole(role, config))),
-                    ("content", content),
-                ]))
+            if case let .turn(shape, wire, _) = msg,
+               appendFlatReplayedTurn(&messages, shape: shape, wire: wire, config: config, bedrock: bedrock) {
+                continue
             }
+            messages.append(flatProjectedEntry(msg, wireShape: wireShape, config: config, bedrock: bedrock))
         }
         return messages
+    }
+
+    /// Renders one canonical message as a flat-envelope entry — the reconstruction
+    /// path, unchanged from before ADR-085 and still what every caller-authored
+    /// turn takes.
+    private static func flatProjectedEntry(
+        _ msg: Msg, wireShape: String, config: ProviderSpec, bedrock: Bool
+    ) -> JSONValue {
+        switch msg {
+        case let .result(result):
+            return toolResultMessage(config, result)
+        case let .calls(calls):
+            return toolCallMessage(config, calls)
+        case let .text(role, text):
+            let content: JSONValue = bedrock
+                ? .array([.object([("text", .string(text))])])
+                : .string(text)
+            return .object([
+                ("role", .string(mapRole(role, config))),
+                ("content", content),
+            ])
+        case let .media(role, text, images, files):
+            let content: JSONValue = bedrock
+                ? .array(bedrockContentParts(images: images, text: text))
+                : .array(flatContentParts(images: images, files: files, text: text, wireShape: wireShape))
+            return .object([
+                ("role", .string(mapRole(role, config))),
+                ("content", content),
+            ])
+        case let .turn(_, _, fallback):
+            // A payload the splice could not place falls back to its projection.
+            // resolveTurns should already have unwrapped anything unplaceable —
+            // this arm is what keeps "should" from being load-bearing, and it is
+            // the arm Bedrock takes: ChatBedrock declares
+            // assistantTurnUnanchored rather than a position (ADR-085 OQ-5),
+            // so there is no container to splice into.
+            return flatProjectedEntry(fallback, wireShape: wireShape, config: config, bedrock: bedrock)
+        }
+    }
+
+    /// Appends a captured assistant turn to a flat-envelope array in whatever
+    /// container that wire family expects, returning false when the payload cannot
+    /// be placed so the caller reconstructs instead.
+    ///
+    /// The three families disagree on what `assistantTurnPath` even points at,
+    /// which is why this cannot be one append:
+    ///
+    ///   - `ChatOpenAI`    `choices[0].message` -> an assistant message object
+    ///   - `ChatAnthropic` `content`            -> the block ARRAY, with no message
+    ///     object around it; the role wrapper below is llmkit's, the blocks are the
+    ///     provider's
+    ///   - `ChatResponses` `output`             -> an ITEM LIST that spreads across
+    ///     N input entries rather than becoming one (ADR-085 OQ-1)
+    private static func appendFlatReplayedTurn(
+        _ messages: inout [JSONValue], shape: String, wire: String,
+        config: ProviderSpec, bedrock: Bool
+    ) -> Bool {
+        if bedrock { return false }
+        guard let payload = try? JSONValue.parse(wire) else { return false }
+        if shape == "ChatAnthropic" {
+            messages.append(.object([
+                ("role", .string(mapRole("assistant", config))),
+                ("content", payload),
+            ]))
+            return true
+        }
+        if shape == "ChatResponsesOpenAI" {
+            guard case let .array(items) = payload else { return false }
+            messages.append(contentsOf: items)
+            return true
+        }
+        guard case .object = payload else { return false }
+        messages.append(payload)
+        return true
     }
 
     /// The flat (OpenAI / Anthropic / Responses) content-parts array for a media
@@ -232,28 +296,53 @@ enum Transforms {
         var idToName: [String: String] = [:]
         var contents: [JSONValue] = []
         for msg in msgs {
-            switch msg {
-            case let .result(result):
-                let resolved = idToName[result.toolUseId].map {
-                    ToolResult(toolUseId: $0, content: result.content)
-                } ?? result
-                contents.append(toolResultMessage(config, resolved))
-            case let .calls(calls):
-                for call in calls { idToName[call.id] = call.name }
-                contents.append(toolCallMessage(config, calls))
-            case let .text(role, text):
-                contents.append(.object([
-                    ("role", .string(mapRole(role, config))),
-                    ("parts", .array([.object([("text", .string(text))])])),
-                ]))
-            case let .media(role, text, images, files):
-                contents.append(.object([
-                    ("role", .string(mapRole(role, config))),
-                    ("parts", .array(googleParts(images: images, files: files, text: text))),
-                ]))
+            // A replayed Google turn is candidates[0].content verbatim — the same
+            // {role, parts} object the contents array takes, so it drops straight
+            // in. It still has to feed idToName below, because a LATER tool result
+            // is matched by name against calls made on this turn; that lookup reads
+            // the canonical projection, which the fallback still carries even when
+            // the payload is what gets sent.
+            if case let .turn(shape, wire, fallback) = msg, shape == "ChatGoogle" {
+                if case let .calls(calls) = fallback {
+                    for call in calls { idToName[call.id] = call.name }
+                }
+                if let payload = try? JSONValue.parse(wire), case .object = payload {
+                    contents.append(payload)
+                    continue
+                }
             }
+            contents.append(googleProjectedEntry(msg, config: config, idToName: &idToName))
         }
         return contents
+    }
+
+    /// Renders one canonical message as a Google `contents` entry — the
+    /// reconstruction path. Mirrors `flatProjectedEntry`, final arm included.
+    private static func googleProjectedEntry(
+        _ msg: Msg, config: ProviderSpec, idToName: inout [String: String]
+    ) -> JSONValue {
+        switch msg {
+        case let .result(result):
+            let resolved = idToName[result.toolUseId].map {
+                ToolResult(toolUseId: $0, content: result.content)
+            } ?? result
+            return toolResultMessage(config, resolved)
+        case let .calls(calls):
+            for call in calls { idToName[call.id] = call.name }
+            return toolCallMessage(config, calls)
+        case let .text(role, text):
+            return .object([
+                ("role", .string(mapRole(role, config))),
+                ("parts", .array([.object([("text", .string(text))])])),
+            ])
+        case let .media(role, text, images, files):
+            return .object([
+                ("role", .string(mapRole(role, config))),
+                ("parts", .array(googleParts(images: images, files: files, text: text))),
+            ])
+        case let .turn(_, _, fallback):
+            return googleProjectedEntry(fallback, config: config, idToName: &idToName)
+        }
     }
 
     // MARK: - Tool definitions
