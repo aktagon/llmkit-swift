@@ -84,8 +84,15 @@ enum RequestBuilder {
             throw LLMKitError.unsupported("chat request: unknown system placement \"\(config.systemPlacement)\"")
         }
 
+        // resolveTurns runs first and only here: it is the one place the config and
+        // the message list meet, so the ADR-085 RSN-006 shape check is made once
+        // rather than remembered in each transform.
         Transforms.applyMessageShape(
-            body: &body, msgs: msgs, system: system, wireShape: wireShape, config: config
+            body: &body,
+            msgs: ProviderTurnCapture.resolveTurns(msgs, config, wireShape),
+            system: system,
+            wireShape: wireShape,
+            config: config
         )
         Transforms.applyToolDefs(&body, config, tools)
 
