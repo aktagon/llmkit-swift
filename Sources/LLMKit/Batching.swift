@@ -304,15 +304,18 @@ struct BatchAdapter: JobAdapter {
             // configured body path; an OpenAI line whose response is null)
             // must not destroy the completed batch: skip it and return the
             // successful subset, mirroring Go.
+            // VERBATIM, not parse-navigate-re-serialize: the inner body is what
+            // ADR-085 captures the assistant turn from, and serializing a parsed
+            // tree emits the SDK's rendering, not the provider's. Harmless while
+            // only scalars were read out of it; not harmless once a payload is
+            // captured from the same bytes.
             let responseText: String
             if batch.resultBodyPath.isEmpty {
                 responseText = line
             } else {
-                guard let parsed = try? JSONValue.parse(line),
-                      let inner = navigate(parsed, batch.resultBodyPath) else {
-                    continue
-                }
-                responseText = inner.serialized()
+                guard let inner = ProviderTurnCapture.extractRawJSONPath(line, batch.resultBodyPath)
+                else { continue }
+                responseText = inner
             }
             // Batch is Chat-Completions-only (ADR-055): an empty wire shape
             // selects the provider's declared response paths, not the Responses
@@ -325,11 +328,4 @@ struct BatchAdapter: JobAdapter {
         return responses
     }
 
-    private func navigate(_ value: JSONValue, _ path: String) -> JSONValue? {
-        var current: JSONValue? = value
-        for part in path.split(separator: ".") {
-            current = current?.member(String(part))
-        }
-        return current
-    }
 }

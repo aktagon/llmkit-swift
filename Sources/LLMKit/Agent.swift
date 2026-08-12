@@ -117,14 +117,26 @@ public final class Agent {
 
             let calls = Transforms.extractToolCalls(raw, config)
             if calls.isEmpty {
-                history.append(.text(role: "assistant", text: parsed.text))
+                // The terminal turn is captured too: an agent kept alive for another
+                // prompt replays it like any other, and Response carries it so a
+                // caller running their own loop can thread the turn forward without
+                // parsing raw per provider (ADR-085 § 6).
+                history.append(
+                    replayable(.text(role: "assistant", text: parsed.text), parsed.providerTurn)
+                )
                 return Response(
                     text: parsed.text, usage: totalUsage ?? Usage(),
-                    finishReason: parsed.finishReason, finishMessage: parsed.finishMessage, raw: nil
+                    finishReason: parsed.finishReason, finishMessage: parsed.finishMessage,
+                    raw: nil, providerTurn: parsed.providerTurn
                 )
             }
 
-            history.append(.calls(calls))
+            // Record the assistant turn. The calls are the projection the loop runs
+            // tools from; the payload is the same turn as the provider wrote it, and
+            // is what the NEXT request sends (ADR-085). Before this, the turn was
+            // rebuilt from the calls alone, which silently dropped any prose the
+            // model emitted alongside them.
+            history.append(replayable(.calls(calls), parsed.providerTurn))
             for call in calls {
                 // Fire toolCall middleware around each tool invocation.
                 var args: [String: JSONValue] = [:]
@@ -154,5 +166,13 @@ public final class Agent {
             }
         }
         throw LLMKitError.unsupported("max tool iterations (\(maxToolIterations)) reached")
+    }
+
+    /// Wraps a projected turn with the provider's own serialization of it, when the
+    /// response carried one (ADR-085). Without a payload the projection is the turn,
+    /// exactly as before this ADR.
+    private func replayable(_ projected: Transforms.Msg, _ turn: ProviderTurn?) -> Transforms.Msg {
+        guard let turn else { return projected }
+        return .turn(shape: turn.wireShape, wire: turn.wire, fallback: projected)
     }
 }

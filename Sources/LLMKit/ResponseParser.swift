@@ -19,18 +19,25 @@ public func decodeResponse(
         throw LLMKitError.decoding("response body is not valid UTF-8")
     }
     let raw = try JSONValue.parse(text)
+    let config = providerConfig(provider)
+    // ADR-085: capture the assistant turn as the provider serialized it, from the
+    // ORIGINAL text rather than from `raw` — re-serializing the parsed tree would
+    // emit the SDK's rendering, not the provider's.
+    let providerTurn = ProviderTurnCapture.capture(text, config, chatWireShape)
 
     if chatWireShape == "ChatResponsesOpenAI" {
-        return parseResponsesEnvelope(raw)
+        var envelope = parseResponsesEnvelope(raw)
+        envelope.providerTurn = providerTurn
+        return envelope
     }
 
-    let config = providerConfig(provider)
     return Response(
         text: raw.stringValue(at: config.responseTextPath),
         usage: decodeUsage(raw, provider),
         finishReason: raw.optString(at: config.finishReasonPath),
         finishMessage: raw.optString(at: config.finishMessagePath),
-        raw: nil
+        raw: nil,
+        providerTurn: providerTurn
     )
 }
 
