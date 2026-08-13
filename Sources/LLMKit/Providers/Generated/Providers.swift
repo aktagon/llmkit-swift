@@ -287,7 +287,7 @@ let providerSpecs: [ProviderSpec] = [
         slug: "cerebras",
         baseURL: "https://api.cerebras.ai",
         endpoint: "/v1/chat/completions",
-        defaultModel: "llama-3.3-70b",
+        defaultModel: "gpt-oss-120b",
         envVar: "CEREBRAS_API_KEY",
         defaultMaxTokens: 4096,
         responseTextPath: "choices[0].message.content",
