@@ -68,7 +68,7 @@ public func providerInfo(_ provider: ProviderName) -> ProviderInfo {
             id: .cerebras,
             slug: "cerebras",
             envVar: "CEREBRAS_API_KEY",
-            defaultModel: "llama-3.3-70b",
+            defaultModel: "gpt-oss-120b",
             baseURL: "https://api.cerebras.ai",
             browserCallable: false
         )
