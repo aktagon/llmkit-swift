@@ -114,6 +114,68 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                 ),
             ]
         )
+    case .openrouter:
+        return ImageGenDef(
+            inputMode: "JSONGenerations",
+            outputMode: "Base64Inline",
+            responseShape: "DataArrayB64Json",
+            usageInputPath: "usage.prompt_tokens",
+            usageOutputPath: "usage.completion_tokens",
+            maxInputCount: 0,
+            genEndpoint: "/v1/images",
+            editEndpoint: "",
+            models: [
+                ImageModelDef(
+                    modelId: "google/gemini-2.5-flash-image",
+                    label: "Nano Banana (Gemini 2.5 Flash Image)",
+                    aspectRatios: [],
+                    imageSizes: [],
+                    maxInputImages: 0
+                ),
+                ImageModelDef(
+                    modelId: "google/gemini-3-pro-image",
+                    label: "Nano Banana Pro (Gemini 3 Pro Image)",
+                    aspectRatios: [],
+                    imageSizes: [],
+                    maxInputImages: 0
+                ),
+                ImageModelDef(
+                    modelId: "google/gemini-3.1-flash-image",
+                    label: "Nano Banana 2 (Gemini 3.1 Flash Image)",
+                    aspectRatios: [],
+                    imageSizes: [],
+                    maxInputImages: 0
+                ),
+                ImageModelDef(
+                    modelId: "google/gemini-3.1-flash-lite-image",
+                    label: "Nano Banana 2 Lite (Gemini 3.1 Flash Lite Image)",
+                    aspectRatios: [],
+                    imageSizes: [],
+                    maxInputImages: 0
+                ),
+                ImageModelDef(
+                    modelId: "openai/gpt-5-image",
+                    label: "GPT-5 Image",
+                    aspectRatios: [],
+                    imageSizes: [],
+                    maxInputImages: 0
+                ),
+                ImageModelDef(
+                    modelId: "openai/gpt-5-image-mini",
+                    label: "GPT-5 Image Mini",
+                    aspectRatios: [],
+                    imageSizes: [],
+                    maxInputImages: 0
+                ),
+                ImageModelDef(
+                    modelId: "openai/gpt-5.4-image-2",
+                    label: "GPT-5.4 Image 2",
+                    aspectRatios: [],
+                    imageSizes: [],
+                    maxInputImages: 0
+                ),
+            ]
+        )
     case .recraft:
         return ImageGenDef(
             inputMode: "JSONGenerations",
