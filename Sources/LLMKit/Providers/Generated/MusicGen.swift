@@ -15,6 +15,7 @@ public struct MusicModelDef: Sendable, Equatable {
 public struct MusicGenDef: Sendable, Equatable {
     public let wireShape: String
     public let genEndpoint: String
+    public let baseURL: String
     public let models: [MusicModelDef]
 }
 
@@ -24,6 +25,7 @@ public func musicGenConfig(_ provider: ProviderName) -> MusicGenDef? {
         return MusicGenDef(
             wireShape: "MusicGenerateContent",
             genEndpoint: "",
+            baseURL: "",
             models: [
                 MusicModelDef(
                     modelId: "lyria-3-clip-preview",
@@ -48,7 +50,8 @@ public func musicGenConfig(_ provider: ProviderName) -> MusicGenDef? {
     case .minimax:
         return MusicGenDef(
             wireShape: "MusicMinimax",
-            genEndpoint: "https://api.minimax.io/v1/music_generation",
+            genEndpoint: "/v1/music_generation",
+            baseURL: "https://api.minimax.io",
             models: [
                 MusicModelDef(
                     modelId: "music-2.6",
@@ -65,6 +68,7 @@ public func musicGenConfig(_ provider: ProviderName) -> MusicGenDef? {
         return MusicGenDef(
             wireShape: "MusicPredict",
             genEndpoint: "",
+            baseURL: "",
             models: [
                 MusicModelDef(
                     modelId: "lyria-002",

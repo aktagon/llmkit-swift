@@ -150,7 +150,10 @@ public struct Music: Sendable {
     private func send(
         parts: [MusicPart], model: String, modelDef: MusicModelDef, mgCfg: MusicGenDef, config: ProviderSpec
     ) async throws -> MusicResponse {
-        let base = baseURLOverride ?? config.baseURL
+        // Explicit override > the provider's distinct music base > the chat
+        // base. mgCfg.baseURL is "" for every provider whose music API shares
+        // the chat host, so this is a no-op except for MiniMax.
+        let base = baseURLOverride ?? (mgCfg.baseURL.isEmpty ? config.baseURL : mgCfg.baseURL)
         var headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
         headers.append(("content-type", "application/json"))
 
@@ -163,7 +166,7 @@ public struct Music: Sendable {
             url = base + endpoint
             body = buildVertexBody(parts)
         case "MusicMinimax":
-            url = mgCfg.genEndpoint.hasPrefix("http") ? mgCfg.genEndpoint : base + mgCfg.genEndpoint
+            url = base + mgCfg.genEndpoint
             body = buildMinimaxBody(parts, model)
         case "MusicGenerateContent": // Gemini
             let endpoint = mgCfg.genEndpoint.isEmpty ? config.endpoint : mgCfg.genEndpoint
