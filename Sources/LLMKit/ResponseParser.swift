@@ -1,5 +1,58 @@
 import Foundation
 
+/// Reads the assistant's text out of a parsed provider body.
+///
+/// Two readers, selected by the WIRE SHAPE, never by provider name:
+///
+/// - block-array families declare a `responseTextConfig` and are read by
+///   DISCRIMINATOR, because array position is not stable — Opus 5 and Sonnet 5
+///   think by default, so `content[0]` is a thinking block (BUG-053);
+/// - scalar families declare none, and nil SELECTS the fixed-path reader.
+///
+/// An empty result is a real answer, not a failure: every tool-use turn carries
+/// no text block at all. `finishReason` is what says why, which is why
+/// `Response.text` stays a plain `String` rather than becoming optional across
+/// seven SDKs to mark something routine.
+func extractResponseText(
+    _ raw: JSONValue, _ config: ProviderSpec, _ chatWireShape: String
+) -> String {
+    guard let textConfig = responseTextConfig(chatWireShape) else {
+        return raw.stringValue(at: config.responseTextPath)
+    }
+    let blocks = raw.matchingBlocks(
+        textConfig.blocksPath, textConfig.markerPath, textConfig.markerValue
+    )
+    guard let first = blocks.first else { return "" }
+    return first.stringValue(at: textConfig.valuePath)
+}
+
+/// `extractResponseText`'s inverse, driven by the SAME config so the two cannot
+/// drift apart.
+///
+/// The marker is WRITTEN, not just tested. Emitting only the value path would
+/// produce `{"content":[{"text":"pong"}]}` — a body with no type discriminator,
+/// which the reader above then finds no matching block in. That is the ADR-076
+/// fixed point breaking, and it is why `textMarkerValue` is documented as a
+/// write instruction rather than a read predicate.
+func encodeResponseText(
+    _ raw: inout [(String, JSONValue)],
+    _ config: ProviderSpec,
+    _ chatWireShape: String,
+    _ text: String
+) {
+    guard let textConfig = responseTextConfig(chatWireShape) else {
+        JSONObject.setWirePath(&raw, config.responseTextPath, .string(text))
+        return
+    }
+    let block = "\(textConfig.blocksPath)[0]"
+    if !textConfig.markerValue.isEmpty {
+        JSONObject.setWirePath(
+            &raw, "\(block).\(textConfig.markerPath)", .string(textConfig.markerValue)
+        )
+    }
+    JSONObject.setWirePath(&raw, "\(block).\(textConfig.valuePath)", .string(text))
+}
+
 /// Extracts text and usage from a provider response body into the universal
 /// `Response`, reading every field from the per-provider dotted paths declared
 /// on the generated `ProviderSpec` and the Caching / Response fact tables.
@@ -32,7 +85,7 @@ public func decodeResponse(
     }
 
     return Response(
-        text: raw.stringValue(at: config.responseTextPath),
+        text: extractResponseText(raw, config, chatWireShape),
         usage: decodeUsage(raw, provider),
         finishReason: raw.optString(at: config.finishReasonPath),
         finishMessage: raw.optString(at: config.finishMessagePath),
@@ -110,7 +163,7 @@ public func encodeResponse(
     let costScale = usageCostScale(config.name)
 
     var raw: [(String, JSONValue)] = []
-    JSONObject.setWirePath(&raw, config.responseTextPath, .string(response.text))
+    encodeResponseText(&raw, config, chatWireShape, response.text)
     JSONObject.setWirePath(&raw, config.usageInputPath, wire(response.usage.input))
     JSONObject.setWirePath(&raw, config.usageOutputPath, wire(response.usage.output))
     JSONObject.setWirePath(&raw, cacheWritePath, wire(response.usage.cacheWrite))
