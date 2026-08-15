@@ -65,9 +65,25 @@ func encodeResponseText(
 /// network, no clock. The wire shape is required, not derived — one provider can
 /// serve two chat protocols, and inferring it silently mis-parses (SYM-003).
 /// This is the same function the chat send path calls (SYM-004).
+/// Fill in an unspecified wire shape with the provider's DEFAULT chat protocol.
+/// 
+/// Callers that decode a body they know is Chat Completions — batch result lines,
+/// chiefly — pass "" to mean "not the Responses envelope". Harmless while the shape
+/// only chose between the Responses arm and the provider's declared paths; NOT
+/// harmless once it also selects the TEXT READER, because "" resolved to no config,
+/// which is the positional reader BUG-053 removed. Batched Anthropic replies with a
+/// leading thinking block decoded to "" long after the send path was fixed.
+/// 
+/// Resolving here keeps N=1. ADR-055 requires every provider's default protocol to
+/// be a Chat Completions family, so this can never resolve INTO the Responses arm.
+func resolveChatWireShape(_ provider: ProviderName, _ chatWireShape: String) -> String {
+    chatWireShape.isEmpty ? providerConfig(provider).chatWireShape : chatWireShape
+}
+
 public func decodeResponse(
-    _ provider: ProviderName, _ chatWireShape: String, _ body: Data
+    _ provider: ProviderName, _ rawShape: String, _ body: Data
 ) throws -> Response {
+    let chatWireShape = resolveChatWireShape(provider, rawShape)
     guard let text = String(data: body, encoding: .utf8) else {
         throw LLMKitError.decoding("response body is not valid UTF-8")
     }
@@ -150,8 +166,9 @@ func accumulateUsage(_ total: Usage, _ turn: Usage) -> Usage {
 /// that). The contract is the canonical fixed point,
 /// `decode(encode(decode(b))) == decode(b)` (SYM-006).
 public func encodeResponse(
-    _ provider: ProviderName, _ chatWireShape: String, _ response: Response
+    _ provider: ProviderName, _ rawShape: String, _ response: Response
 ) throws -> Data {
+    let chatWireShape = resolveChatWireShape(provider, rawShape)
     try guardOneWayFields(provider, response)
     if chatWireShape == "ChatResponsesOpenAI" {
         return Data(JSONValue.object(encodeResponsesEnvelope(response)).serialized().utf8)
