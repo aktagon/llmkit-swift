@@ -22,6 +22,10 @@ public struct Image: Sendable {
     var options = ImageOptions()
     /// Accumulated reference images for the edit path (caller order preserved).
     var inputImages: [MediaRef] = []
+    /// Ordered text parts accumulated by `.text(...)`. `generate(prompt)`
+    /// appends its own argument after these, so the request reads in caller
+    /// order (mirrors Music's `parts` accumulator and Go's `parts`).
+    var textParts: [String] = []
 
     init(provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient) {
         self.provider = provider
@@ -107,7 +111,7 @@ public struct Image: Sendable {
     }
 
     /// Clone-on-chain helper: copy, mutate, return.
-    private func with(_ mutate: (inout Image) -> Void) -> Image {
+    func with(_ mutate: (inout Image) -> Void) -> Image {
         var copy = self
         mutate(&copy)
         return copy
@@ -129,15 +133,14 @@ public struct Image: Sendable {
     /// chain that accumulated reference images uses the parts path (text appended
     /// last); otherwise the prompt sugar path. Both empty is a validation error.
     private func normalizeParts(_ prompt: String) throws -> [ImagePart] {
+        let texts = ([textParts, [prompt]].flatMap { $0 }).filter { !$0.isEmpty }
         if !inputImages.isEmpty {
-            var parts = inputImages.map { ImagePart.image($0) }
-            if !prompt.isEmpty { parts.append(.text(prompt)) }
-            return parts
+            return inputImages.map { ImagePart.image($0) } + texts.map { ImagePart.text($0) }
         }
-        guard !prompt.isEmpty else {
+        guard !texts.isEmpty else {
             throw LLMKitError.validation(field: "prompt", message: "set either prompt or parts")
         }
-        return [.text(prompt)]
+        return texts.map { ImagePart.text($0) }
     }
 
     private func joinText(_ parts: [ImagePart]) -> String {
@@ -178,14 +181,32 @@ public struct Image: Sendable {
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
             try reject(options.count.map { String($0) }, "count", slug)
+            // Google takes safetySettings (wired in buildGoogleBody) but has no
+            // single-threshold safetyFilter knob — that is Vertex Imagen's.
+            if options.safetyFilter != nil {
+                throw LLMKitError.validation(
+                    field: "safety_filter",
+                    message: "not supported by \(slug); use safety_settings"
+                )
+            }
         case "JSONInlineRefs":
             try reject(options.quality, "quality", slug)
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
+            try reject(options.safetyFilter, "safety_filter", slug)
+            try rejectSafetySettings(slug)
         case "JSONPredict":
             try reject(options.quality, "quality", slug)
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
+            // Vertex Imagen's knob is the single-threshold safetySetting (wired
+            // in buildVertexBody); the per-category array is Google's.
+            if !options.safetySettings.isEmpty {
+                throw LLMKitError.validation(
+                    field: "safety_settings",
+                    message: "not supported by \(slug); use safety_filter for Vertex Imagen"
+                )
+            }
         case "JSONGenerations":
             if options.aspectRatio != nil {
                 throw LLMKitError.validation(
@@ -196,8 +217,19 @@ public struct Image: Sendable {
             try reject(options.quality, "quality", slug)
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
+            try reject(options.safetyFilter, "safety_filter", slug)
+            try rejectSafetySettings(slug)
         default:
-            break // MultipartForm: quality / output_format / background / count all valid
+            // MultipartForm (OpenAI): quality / output_format / background /
+            // count are all valid; neither safety knob is.
+            try reject(options.safetyFilter, "safety_filter", slug)
+            try rejectSafetySettings(slug)
+        }
+    }
+
+    private func rejectSafetySettings(_ slug: String) throws {
+        if !options.safetySettings.isEmpty {
+            throw LLMKitError.validation(field: "safety_settings", message: "not supported by \(slug)")
         }
     }
 
@@ -251,7 +283,9 @@ public struct Image: Sendable {
         }
         let raw = try JSONValue.parse(String(decoding: data, as: UTF8.self))
         // Response parser selected by config shape, never provider name (BUG-024).
-        return try parseResponse(raw, imgCfg)
+        var parsed = try parseResponse(raw, imgCfg)
+        if options.raw { parsed.raw = raw }
+        return parsed
     }
 
     // MARK: - Request bodies
@@ -282,10 +316,16 @@ public struct Image: Sendable {
         if !imageConfig.isEmpty {
             generationConfig.append(("imageConfig", .object(imageConfig)))
         }
-        return .object([
+        var body: [(String, JSONValue)] = [
             ("contents", .array([.object([("parts", .array(wire))])])),
             ("generationConfig", .object(generationConfig)),
-        ])
+        ]
+        if !options.safetySettings.isEmpty {
+            body.append(("safetySettings", .array(options.safetySettings.map {
+                .object([("category", .string($0.category)), ("threshold", .string($0.threshold))])
+            })))
+        }
+        return .object(body)
     }
 
     /// OpenAI `/v1/images/generations` JSON body. gpt-image-* always returns
@@ -365,6 +405,7 @@ public struct Image: Sendable {
         }
         var parameters: [(String, JSONValue)] = [("sampleCount", .int(Int64(options.count ?? 1)))]
         if let ratio = options.aspectRatio { parameters.append(("aspectRatio", .string(ratio))) }
+        if let filter = options.safetyFilter { parameters.append(("safetySetting", .string(filter))) }
         return .object([
             ("instances", .array([.object(instance)])),
             ("parameters", .object(parameters)),
@@ -493,4 +534,10 @@ struct ImageOptions: Sendable {
     var background: String?
     var count: Int?
     var middleware: [MiddlewareFn] = []
+    /// Vertex Imagen's single-threshold `safetySetting` parameter.
+    var safetyFilter: String?
+    /// Google's per-category `safetySettings` array.
+    var safetySettings: [SafetySetting] = []
+    /// Opt into `ImageResponse.raw` (the parsed provider body, ADR-014).
+    var raw: Bool = false
 }

@@ -195,6 +195,17 @@ public struct Text: Sendable {
     var options = PromptOptions()
     var inputImages: [InputImage] = []
     var inputFiles: [FileRef] = []
+    /// Ordered text parts accumulated by `.text(...)`. The terminal's own
+    /// argument (`prompt(_:)` / `stream(_:_:)`) is appended after these, so the
+    /// user turn reads in caller order — the same rule Go's `parts` accumulator
+    /// follows.
+    var textParts: [String] = []
+    /// Conversation history prepended to the user turn by `.history(...)`.
+    var historyMsgs: [Message] = []
+    /// Opt into `Response.raw` (ADR-014). Honored by `prompt(_:)`; `stream` has
+    /// no single provider body to carry, and Go's `Stream` does not honor it
+    /// either.
+    var rawOptIn: Bool = false
 
     init(provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient) {
         self.provider = provider
@@ -282,10 +293,16 @@ public struct Text: Sendable {
     /// accumulated image/file parts (ADR-060). Files precede images precede text
     /// in the emitted content array.
     private func userMsgs(_ prompt: String) -> [Transforms.Msg] {
+        let text = ([textParts, [prompt]].flatMap { $0 })
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        let turn: Transforms.Msg
         if inputImages.isEmpty, inputFiles.isEmpty {
-            return [.text(role: "user", text: prompt)]
+            turn = .text(role: "user", text: text)
+        } else {
+            turn = .media(role: "user", text: text, images: inputImages, files: inputFiles)
         }
-        return [.media(role: "user", text: prompt, images: inputImages, files: inputFiles)]
+        return Transforms.msgs(from: historyMsgs) + [turn]
     }
 
     /// Send a single-turn prompt and return the response. Fires the `llmRequest`
@@ -325,7 +342,10 @@ public struct Text: Sendable {
             guard (200..<300).contains(statusCode) else {
                 throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
             }
-            let response = try decodeResponse(provider, wireShape, data)
+            var response = try decodeResponse(provider, wireShape, data)
+            if rawOptIn {
+                response.raw = try JSONValue.parse(String(decoding: data, as: UTF8.self))
+            }
             postEvent.duration = Date().timeIntervalSince(start)
             postEvent.usage = response.usage
             Middleware.firePost(options.middleware, postEvent)
@@ -374,7 +394,8 @@ public struct Text: Sendable {
             let job = try await Batch.submit(
                 config: config, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
                 model: model, system: systemPrompt, prompts: prompts,
-                images: inputImages, files: inputFiles, options: options
+                images: inputImages, files: inputFiles,
+                history: Transforms.msgs(from: historyMsgs), options: options
             )
             postEvent.duration = Date().timeIntervalSince(start)
             Middleware.firePost(options.middleware, postEvent)
@@ -387,8 +408,10 @@ public struct Text: Sendable {
         }
     }
 
-    /// Clone-on-chain helper: copy, mutate, return.
-    private func with(_ mutate: (inout Text) -> Void) -> Text {
+    /// Clone-on-chain helper: copy, mutate, return. Internal, not private: the
+    /// generated chain methods in `Providers/Generated/Builders.swift` are an
+    /// extension in this module and mutate through it.
+    func with(_ mutate: (inout Text) -> Void) -> Text {
         var copy = self
         mutate(&copy)
         return copy
