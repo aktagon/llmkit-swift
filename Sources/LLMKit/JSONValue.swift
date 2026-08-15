@@ -90,6 +90,44 @@ extension JSONValue {
         return current
     }
 
+    /// Elements of the array at `blocksPath` that the marker identifies, in
+    /// wire order. The single primitive behind every "which blocks in this
+    /// response are of kind X" question — text extraction and tool-call
+    /// extraction both run through it, so the two cannot come to disagree
+    /// about what an array element is.
+    ///
+    /// Marker semantics are exactly the generated config contract:
+    ///
+    /// - `markerPath` empty: homogeneous array; every element matches
+    /// - `markerPath` set, `markerValue` empty: matches if the key is PRESENT
+    /// - both set: matches if the key EQUALS the value
+    ///
+    /// Presence rather than equality is not a shortcut: a Bedrock ContentBlock
+    /// and a Gemini Part are UNIONS whose text member carries no type key at
+    /// all, so an equality test there would match nothing.
+    ///
+    /// Navigation reuses `lookup`, so there is no second path grammar here.
+    func matchingBlocks(
+        _ blocksPath: String,
+        _ markerPath: String,
+        _ markerValue: String
+    ) -> [JSONValue] {
+        guard case let .array(items)? = lookup(blocksPath) else { return [] }
+
+        var out: [JSONValue] = []
+        for item in items {
+            guard case .object = item else { continue }
+            if !markerPath.isEmpty {
+                guard let marker = item.member(markerPath) else { continue }
+                if !markerValue.isEmpty {
+                    guard case let .string(text) = marker, text == markerValue else { continue }
+                }
+            }
+            out.append(item)
+        }
+        return out
+    }
+
     /// String at a dotted path, coercing scalars; empty string on miss.
     public func stringValue(at path: String) -> String {
         switch lookup(path) {
