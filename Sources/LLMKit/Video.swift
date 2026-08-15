@@ -28,6 +28,9 @@ public struct Video: Sendable {
     var modelOverride: String?
     /// Accumulated seed frames for the image-to-video path (caller order).
     var inputImages: [MediaRef] = []
+    /// Ordered text parts accumulated by `.text(...)`. `submit(prompt)` appends
+    /// its own argument after these, so the request reads in caller order.
+    var textParts: [String] = []
     /// Caller S3 destination URI for output-uri delivery (Bedrock Nova Reel).
     var outputURIValue: String = ""
     var rawOptIn: Bool = false
@@ -104,7 +107,7 @@ public struct Video: Sendable {
     }
 
     /// Clone-on-chain helper: copy, mutate, return.
-    private func with(_ mutate: (inout Video) -> Void) -> Video {
+    func with(_ mutate: (inout Video) -> Void) -> Video {
         var copy = self
         mutate(&copy)
         return copy
@@ -123,15 +126,14 @@ public struct Video: Sendable {
     /// Prompt-only hot path, or (when seed frames were attached) the parts path
     /// with the prompt text appended last. Both empty is a validation error.
     private func normalizeParts(_ prompt: String) throws -> [VideoPart] {
+        let texts = ([textParts, [prompt]].flatMap { $0 }).filter { !$0.isEmpty }
         if !inputImages.isEmpty {
-            var parts = inputImages.map { VideoPart.image($0) }
-            if !prompt.isEmpty { parts.append(.text(prompt)) }
-            return parts
+            return inputImages.map { VideoPart.image($0) } + texts.map { VideoPart.text($0) }
         }
-        guard !prompt.isEmpty else {
+        guard !texts.isEmpty else {
             throw LLMKitError.validation(field: "prompt", message: "set either prompt or parts")
         }
-        return [.text(prompt)]
+        return texts.map { VideoPart.text($0) }
     }
 
     private func joinPromptText(_ parts: [VideoPart]) -> String {
