@@ -42,6 +42,53 @@ func responseTextPath(_ provider: ProviderName) -> String {
     }
 }
 
+/// Where the assistant's text sits in a block-ARRAY response, located by
+/// discriminator rather than array position: a leading thinking block or
+/// non-text part shifts text out from under a fixed path (BUG-053).
+///
+/// - `markerPath` empty: every element is a text block
+/// - `markerPath` set, `markerValue` empty: element is text if the key is PRESENT
+/// - both set: element is text if the key EQUALS the value
+///
+/// `markerValue` is also a WRITE instruction: `encodeResponse` stamps it onto
+/// the block it writes, so an emitted body reads back through this table.
+struct ResponseTextConfig {
+    let blocksPath: String
+    let markerPath: String
+    let markerValue: String
+    let valuePath: String
+}
+
+/// Text-block selector for a chat wire shape, or nil when the shape carries
+/// text as a plain scalar — nil SELECTS the responseTextPath reader above, it
+/// does not mean the shape has no text.
+func responseTextConfig(_ chatWireShape: String) -> ResponseTextConfig? {
+    switch chatWireShape {
+    case "ChatAnthropic":
+        return ResponseTextConfig(
+            blocksPath: "content",
+            markerPath: "type",
+            markerValue: "text",
+            valuePath: "text"
+        )
+    case "ChatBedrock":
+        return ResponseTextConfig(
+            blocksPath: "output.message.content",
+            markerPath: "text",
+            markerValue: "",
+            valuePath: "text"
+        )
+    case "ChatGoogle":
+        return ResponseTextConfig(
+            blocksPath: "candidates[0].content.parts",
+            markerPath: "text",
+            markerValue: "",
+            valuePath: "text"
+        )
+    default: return nil
+    }
+}
+
 func usagePaths(_ provider: ProviderName) -> (input: String, output: String) {
     switch provider {
     case .ai21: return ("usage.prompt_tokens", "usage.completion_tokens")
