@@ -1,5 +1,58 @@
 import Foundation
 
+/// Reads the assistant's text out of a parsed provider body.
+///
+/// Two readers, selected by the WIRE SHAPE, never by provider name:
+///
+/// - block-array families declare a `responseTextConfig` and are read by
+///   DISCRIMINATOR, because array position is not stable — Opus 5 and Sonnet 5
+///   think by default, so `content[0]` is a thinking block (BUG-053);
+/// - scalar families declare none, and nil SELECTS the fixed-path reader.
+///
+/// An empty result is a real answer, not a failure: every tool-use turn carries
+/// no text block at all. `finishReason` is what says why, which is why
+/// `Response.text` stays a plain `String` rather than becoming optional across
+/// seven SDKs to mark something routine.
+func extractResponseText(
+    _ raw: JSONValue, _ config: ProviderSpec, _ chatWireShape: String
+) -> String {
+    guard let textConfig = responseTextConfig(chatWireShape) else {
+        return raw.stringValue(at: config.responseTextPath)
+    }
+    let blocks = raw.matchingBlocks(
+        textConfig.blocksPath, textConfig.markerPath, textConfig.markerValue
+    )
+    guard let first = blocks.first else { return "" }
+    return first.stringValue(at: textConfig.valuePath)
+}
+
+/// `extractResponseText`'s inverse, driven by the SAME config so the two cannot
+/// drift apart.
+///
+/// The marker is WRITTEN, not just tested. Emitting only the value path would
+/// produce `{"content":[{"text":"pong"}]}` — a body with no type discriminator,
+/// which the reader above then finds no matching block in. That is the ADR-076
+/// fixed point breaking, and it is why `textMarkerValue` is documented as a
+/// write instruction rather than a read predicate.
+func encodeResponseText(
+    _ raw: inout [(String, JSONValue)],
+    _ config: ProviderSpec,
+    _ chatWireShape: String,
+    _ text: String
+) {
+    guard let textConfig = responseTextConfig(chatWireShape) else {
+        JSONObject.setWirePath(&raw, config.responseTextPath, .string(text))
+        return
+    }
+    let block = "\(textConfig.blocksPath)[0]"
+    if !textConfig.markerValue.isEmpty {
+        JSONObject.setWirePath(
+            &raw, "\(block).\(textConfig.markerPath)", .string(textConfig.markerValue)
+        )
+    }
+    JSONObject.setWirePath(&raw, "\(block).\(textConfig.valuePath)", .string(text))
+}
+
 /// Extracts text and usage from a provider response body into the universal
 /// `Response`, reading every field from the per-provider dotted paths declared
 /// on the generated `ProviderSpec` and the Caching / Response fact tables.
@@ -12,9 +65,25 @@ import Foundation
 /// network, no clock. The wire shape is required, not derived — one provider can
 /// serve two chat protocols, and inferring it silently mis-parses (SYM-003).
 /// This is the same function the chat send path calls (SYM-004).
+/// Fill in an unspecified wire shape with the provider's DEFAULT chat protocol.
+/// 
+/// Callers that decode a body they know is Chat Completions — batch result lines,
+/// chiefly — pass "" to mean "not the Responses envelope". Harmless while the shape
+/// only chose between the Responses arm and the provider's declared paths; NOT
+/// harmless once it also selects the TEXT READER, because "" resolved to no config,
+/// which is the positional reader BUG-053 removed. Batched Anthropic replies with a
+/// leading thinking block decoded to "" long after the send path was fixed.
+/// 
+/// Resolving here keeps N=1. ADR-055 requires every provider's default protocol to
+/// be a Chat Completions family, so this can never resolve INTO the Responses arm.
+func resolveChatWireShape(_ provider: ProviderName, _ chatWireShape: String) -> String {
+    chatWireShape.isEmpty ? providerConfig(provider).chatWireShape : chatWireShape
+}
+
 public func decodeResponse(
-    _ provider: ProviderName, _ chatWireShape: String, _ body: Data
+    _ provider: ProviderName, _ rawShape: String, _ body: Data
 ) throws -> Response {
+    let chatWireShape = resolveChatWireShape(provider, rawShape)
     guard let text = String(data: body, encoding: .utf8) else {
         throw LLMKitError.decoding("response body is not valid UTF-8")
     }
@@ -32,7 +101,7 @@ public func decodeResponse(
     }
 
     return Response(
-        text: raw.stringValue(at: config.responseTextPath),
+        text: extractResponseText(raw, config, chatWireShape),
         usage: decodeUsage(raw, provider),
         finishReason: raw.optString(at: config.finishReasonPath),
         finishMessage: raw.optString(at: config.finishMessagePath),
@@ -97,8 +166,9 @@ func accumulateUsage(_ total: Usage, _ turn: Usage) -> Usage {
 /// that). The contract is the canonical fixed point,
 /// `decode(encode(decode(b))) == decode(b)` (SYM-006).
 public func encodeResponse(
-    _ provider: ProviderName, _ chatWireShape: String, _ response: Response
+    _ provider: ProviderName, _ rawShape: String, _ response: Response
 ) throws -> Data {
+    let chatWireShape = resolveChatWireShape(provider, rawShape)
     try guardOneWayFields(provider, response)
     if chatWireShape == "ChatResponsesOpenAI" {
         return Data(JSONValue.object(encodeResponsesEnvelope(response)).serialized().utf8)
@@ -110,7 +180,7 @@ public func encodeResponse(
     let costScale = usageCostScale(config.name)
 
     var raw: [(String, JSONValue)] = []
-    JSONObject.setWirePath(&raw, config.responseTextPath, .string(response.text))
+    encodeResponseText(&raw, config, chatWireShape, response.text)
     JSONObject.setWirePath(&raw, config.usageInputPath, wire(response.usage.input))
     JSONObject.setWirePath(&raw, config.usageOutputPath, wire(response.usage.output))
     JSONObject.setWirePath(&raw, cacheWritePath, wire(response.usage.cacheWrite))
