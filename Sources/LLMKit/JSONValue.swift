@@ -18,6 +18,9 @@ public enum JSONValue: Sendable {
     case array([JSONValue])
     /// Object as ordered key/value pairs so insertion order is preserved for
     /// deterministic serialization. Equality is order-insensitive (see `==`).
+    /// The parser never produces a duplicate key (the last value wins, at the
+    /// first key's position, as in every other SDK's codec); a hand-built
+    /// duplicate reads through `member` as its last value.
     case object([(String, JSONValue)])
 }
 
@@ -53,10 +56,12 @@ extension JSONValue: Equatable {
 // MARK: - Member / path access
 
 extension JSONValue {
-    /// The value for `key` when this is an object, else nil.
+    /// The value for `key` when this is an object, else nil. Last wins on a
+    /// duplicate key, matching Go, JavaScript, Python, serde_json and Gson
+    /// (BUG-065).
     func member(_ key: String) -> JSONValue? {
         if case let .object(pairs) = self {
-            return pairs.first(where: { $0.0 == key })?.1
+            return pairs.last(where: { $0.0 == key })?.1
         }
         return nil
     }
@@ -139,13 +144,12 @@ extension JSONValue {
         }
     }
 
-    /// Integer at a dotted path; 0 on miss.
+    /// Integer at a dotted path; 0 on miss. A number that is not exactly an
+    /// `Int` (fractional, out of range, infinite) is a miss too: `Int(Double)`
+    /// traps on those, and a trap is a process abort, never an error
+    /// (BUG-065).
     public func intValue(at path: String) -> Int {
-        switch lookup(path) {
-        case let .int(value): return Int(value)
-        case let .double(value): return Int(value)
-        default: return 0
-        }
+        return optInt(at: path) ?? 0
     }
 
     /// Double at a dotted path; 0.0 on miss.
@@ -165,8 +169,8 @@ extension JSONValue {
     public func optInt(at path: String) -> Int? {
         guard !path.isEmpty else { return nil }
         switch lookup(path) {
-        case let .int(value): return Int(value)
-        case let .double(value): return Int(value)
+        case let .int(value): return Int(exactly: value)
+        case let .double(value): return Int(exactly: value)
         default: return nil
         }
     }
@@ -293,7 +297,15 @@ extension JSONValue {
         case unexpected(Character, at: Int)
         case invalidNumber(String)
         case invalidEscape
+        /// Arrays and objects nested deeper than `maxNestingDepth`. The
+        /// parser recurses once per level, so an unbounded document is a
+        /// stack overflow, which no `catch` can reach (BUG-065).
+        case nestingTooDeep(Int)
     }
+
+    /// Deepest array/object nesting the parser accepts. serde_json's default
+    /// recursion limit, so Swift refuses the same documents Rust does.
+    public static let maxNestingDepth = 128
 
     /// Parse a JSON document into a `JSONValue`. Distinguishes integers from
     /// doubles by the number token (a `.`/`e`/`E` marks a double), so booleans
@@ -312,8 +324,16 @@ extension JSONValue {
     private struct Parser {
         let scalars: [Character]
         var index: Int = 0
+        var depth: Int = 0
 
         init(_ scalars: [Character]) { self.scalars = scalars }
+
+        mutating func enterContainer() throws {
+            depth += 1
+            guard depth <= JSONValue.maxNestingDepth else {
+                throw ParseError.nestingTooDeep(JSONValue.maxNestingDepth)
+            }
+        }
 
         mutating func skipWhitespace() {
             while index < scalars.count {
@@ -348,6 +368,8 @@ extension JSONValue {
 
         mutating func parseObject() throws -> JSONValue {
             try expect("{")
+            try enterContainer()
+            defer { depth -= 1 }
             var pairs: [(String, JSONValue)] = []
             skipWhitespace()
             if index < scalars.count, scalars[index] == "}" {
@@ -360,7 +382,12 @@ extension JSONValue {
                 skipWhitespace()
                 try expect(":")
                 let value = try parseValue()
-                pairs.append((key, value))
+                // Last wins, at the first key's position (BUG-065).
+                if let existing = pairs.firstIndex(where: { $0.0 == key }) {
+                    pairs[existing].1 = value
+                } else {
+                    pairs.append((key, value))
+                }
                 skipWhitespace()
                 guard index < scalars.count else { throw ParseError.unexpectedEnd }
                 if scalars[index] == "," {
@@ -375,6 +402,8 @@ extension JSONValue {
 
         mutating func parseArray() throws -> JSONValue {
             try expect("[")
+            try enterContainer()
+            defer { depth -= 1 }
             var items: [JSONValue] = []
             skipWhitespace()
             if index < scalars.count, scalars[index] == "]" {
