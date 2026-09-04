@@ -277,7 +277,9 @@ enum VideoWire {
         switch vgCfg.wireShape {
         case "VideoGrok":
             guard let video = raw.member("video"), case .object = video else { return VideoResponse.default() }
-            return single(mime: mime, url: video.stringValue(at: "url"), duration: video.intValue(at: "duration"))
+            // A duration is a measured quantity: truncate a fractional value
+            // as Go does, instead of reading it as absent (BUG-065).
+            return single(mime: mime, url: video.stringValue(at: "url"), duration: video.optTruncatedInt(at: "duration") ?? 0)
         case "VideoZhipu":
             return urlResult(mime: mime, url: stringAt(raw, "video_result[0].url"))
         case "VideoVidu":
