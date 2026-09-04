@@ -175,6 +175,21 @@ extension JSONValue {
         }
     }
 
+    /// Integer at a dotted path for a measured quantity such as a duration,
+    /// truncated toward zero the way Go's `int(d)` is; `nil` on a miss, or
+    /// when the number is not finite or does not fit. Counts use `optInt`,
+    /// which refuses a fractional value (decision 2026-09-04, BUG-065).
+    public func optTruncatedInt(at path: String) -> Int? {
+        guard !path.isEmpty else { return nil }
+        switch lookup(path) {
+        case let .int(value): return Int(exactly: value)
+        case let .double(value):
+            guard value.isFinite else { return nil }
+            return Int(exactly: value.rounded(.towardZero))
+        default: return nil
+        }
+    }
+
     /// `optInt(at:)` for the fractional provider-reported USD cost (ADR-027).
     /// An unreported cost is not a free request (AVAIL-007).
     public func optDouble(at path: String) -> Double? {
