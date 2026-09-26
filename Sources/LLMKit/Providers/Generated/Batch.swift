@@ -15,6 +15,9 @@ struct BatchDef: Sendable, Equatable {
     let endpointPath: String
     let itemBodyField: String
     let resultBodyPath: String
+    let resultKeyPath: String
+    let resultStatusPath: String
+    let resultErrorPath: String
     let lifecycle: ResourceLifecycleDef?
 }
 
@@ -30,6 +33,9 @@ func batchConfig(_ provider: ProviderName) -> BatchDef? {
             endpointPath: "",
             itemBodyField: "params",
             resultBodyPath: "result.message",
+            resultKeyPath: "custom_id",
+            resultStatusPath: "result.type",
+            resultErrorPath: "result.error.error.message",
             lifecycle:
                 ResourceLifecycleDef(
                     createEndpoint: "/v1/messages/batches",
@@ -55,6 +61,9 @@ func batchConfig(_ provider: ProviderName) -> BatchDef? {
             endpointPath: "",
             itemBodyField: "",
             resultBodyPath: "",
+            resultKeyPath: "",
+            resultStatusPath: "",
+            resultErrorPath: "",
             lifecycle: nil
         )
     case .openai:
@@ -67,6 +76,9 @@ func batchConfig(_ provider: ProviderName) -> BatchDef? {
             endpointPath: "/v1/chat/completions",
             itemBodyField: "",
             resultBodyPath: "response.body",
+            resultKeyPath: "custom_id",
+            resultStatusPath: "",
+            resultErrorPath: "error.message",
             lifecycle:
                 ResourceLifecycleDef(
                     createEndpoint: "/v1/batches",
