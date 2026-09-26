@@ -45,7 +45,14 @@ public final class BatchJob: Sendable {
         try await Job.pollOnce(try makeAdapter())
     }
 
-    /// Poll until a terminal state, returning the ordered responses.
+    /// Poll until a terminal state, returning one Response per prompt, at the
+    /// prompt's index. A failed request keeps its slot: empty text,
+    /// finishReason set to the provider's result status ("errored",
+    /// "expired", "canceled"; "error" when the provider has none) and
+    /// finishMessage set to the provider's error message. A request with no
+    /// result line reads finishReason "missing". Results whose request id is
+    /// not one this SDK assigned (a batch created elsewhere, resumed by ID)
+    /// follow the indexed ones in file order.
     public func wait() async throws -> [Response] {
         var adapter = try makeAdapter()
         adapter.lc.pollInterval = interval
@@ -301,38 +308,82 @@ struct BatchAdapter: JobAdapter {
         return parseResults(responseBody)
     }
 
-    private func parseResults(_ data: String) -> [Response] {
-        var responses: [Response] = []
+    /// One Response per submitted request, at that request's index (BUG-072).
+    /// Providers return result lines in any order, so a line is placed by the
+    /// request id at `resultKeyPath`: "req-N" goes to index N. A line with no
+    /// decodable body at `resultBodyPath` is a failed request and keeps its
+    /// slot (see `parseResultLine`). An index with no line reads finishReason
+    /// "missing". Lines whose id is not "req-N" (a batch created outside
+    /// llmkit, or a repeated id) follow the indexed slots in file order. A line
+    /// that is not JSON cannot be placed and is skipped; its index reads
+    /// "missing".
+    func parseResults(_ data: String) -> [Response] {
+        var slots: [Response?] = []
+        var unkeyed: [Response] = []
         for rawLine in data.split(separator: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.isEmpty { continue }
-            // A malformed or errored item line (e.g. Anthropic
-            // result.type=errored, which carries no result.message at the
-            // configured body path; an OpenAI line whose response is null)
-            // must not destroy the completed batch: skip it and return the
-            // successful subset, mirroring Go.
-            // VERBATIM, not parse-navigate-re-serialize: the inner body is what
-            // ADR-085 captures the assistant turn from, and serializing a parsed
-            // tree emits the SDK's rendering, not the provider's. Harmless while
-            // only scalars were read out of it; not harmless once a payload is
-            // captured from the same bytes.
-            let responseText: String
-            if batch.resultBodyPath.isEmpty {
-                responseText = line
-            } else {
-                guard let inner = ProviderTurnCapture.extractRawJSONPath(line, batch.resultBodyPath)
-                else { continue }
-                responseText = inner
-            }
-            // Batch is Chat-Completions-only (ADR-055): an empty wire shape
-            // selects the provider's declared response paths, not the Responses
-            // output[] arm.
-            guard let response = try? decodeResponse(spec.name, "", Data(responseText.utf8)) else {
+            guard let wrapper = try? JSONValue.parse(line) else { continue }
+            let response = parseResultLine(line, wrapper)
+
+            guard !batch.resultKeyPath.isEmpty,
+                  let index = Self.requestIndex(wrapper.lookup(batch.resultKeyPath)),
+                  index >= slots.count || slots[index] == nil
+            else {
+                unkeyed.append(response)
                 continue
             }
-            responses.append(response)
+            if index >= slots.count {
+                slots.append(contentsOf: Array(repeating: nil, count: index - slots.count + 1))
+            }
+            slots[index] = response
         }
-        return responses
+        let missing = Response(
+            text: "", usage: Usage(), finishReason: "missing", finishMessage: nil, raw: nil
+        )
+        return slots.map { $0 ?? missing } + unkeyed
     }
 
+    /// Decodes one result line. A line whose body is missing at
+    /// `resultBodyPath`, or does not decode, becomes a failed Response: empty
+    /// text, finishReason from `resultStatusPath` ("error" when the provider
+    /// has none), finishMessage from `resultErrorPath`.
+    private func parseResultLine(_ line: String, _ wrapper: JSONValue) -> Response {
+        // VERBATIM, not parse-navigate-re-serialize: the inner body is what
+        // ADR-085 captures the assistant turn from, and serializing a parsed
+        // tree emits the SDK's rendering, not the provider's. Harmless while
+        // only scalars were read out of it; not harmless once a payload is
+        // captured from the same bytes.
+        let body = batch.resultBodyPath.isEmpty
+            ? line
+            : ProviderTurnCapture.extractRawJSONPath(line, batch.resultBodyPath)
+        // Batch is Chat-Completions-only (ADR-055): an empty wire shape
+        // selects the provider's declared response paths, not the Responses
+        // output[] arm.
+        if let body, body.first == "{",
+           let response = try? decodeResponse(spec.name, "", Data(body.utf8)) {
+            return response
+        }
+        return Response(
+            text: "",
+            usage: Usage(),
+            finishReason: Self.string(wrapper, batch.resultStatusPath) ?? "error",
+            finishMessage: Self.string(wrapper, batch.resultErrorPath),
+            raw: nil
+        )
+    }
+
+    /// A non-empty string at `path`, or nil (also when `path` is empty).
+    private static func string(_ value: JSONValue, _ path: String) -> String? {
+        guard !path.isEmpty, case let .string(s)? = value.lookup(path), !s.isEmpty else { return nil }
+        return s
+    }
+
+    /// N out of the "req-N" id the SDK sends with request N; nil for any other id.
+    static func requestIndex(_ id: JSONValue?) -> Int? {
+        guard case let .string(id)? = id, id.hasPrefix("req-") else { return nil }
+        let digits = id.dropFirst(4)
+        guard !digits.isEmpty, digits.allSatisfy({ ("0"..."9").contains($0) }) else { return nil }
+        return Int(digits)
+    }
 }
