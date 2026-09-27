@@ -80,6 +80,29 @@ func resolveChatWireShape(_ provider: ProviderName, _ chatWireShape: String) -> 
     chatWireShape.isEmpty ? providerConfig(provider).chatWireShape : chatWireShape
 }
 
+/// `decodeResponse` plus the ADR-014 raw opt-in. Every Response send path that
+/// honors `.raw()` (prompt, batch) decodes or attaches through here, so none can
+/// forget it (BUG-073). The public codec keeps its signature (ADR-076).
+func decodeResponseRaw(
+    _ provider: ProviderName, _ wireShape: String, _ body: Data, raw: Bool
+) throws -> Response {
+    let response = try decodeResponse(provider, wireShape, body)
+    return try attachRaw(response, raw: raw) {
+        try JSONValue.parse(String(decoding: body, as: UTF8.self))
+    }
+}
+
+/// Sets `response.raw` to `body()` when the caller opted in; `body` is not
+/// evaluated otherwise.
+func attachRaw(
+    _ response: Response, raw: Bool, _ body: () throws -> JSONValue
+) rethrows -> Response {
+    guard raw else { return response }
+    var copy = response
+    copy.raw = try body()
+    return copy
+}
+
 public func decodeResponse(
     _ provider: ProviderName, _ rawShape: String, _ body: Data
 ) throws -> Response {

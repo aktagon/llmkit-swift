@@ -47,12 +47,12 @@ public final class BatchJob: Sendable {
 
     /// Poll until a terminal state, returning one Response per prompt, at the
     /// prompt's index. A failed request keeps its slot: empty text,
-    /// finishReason set to the provider's result status ("errored",
-    /// "expired", "canceled"; "error" when the provider has none) and
+    /// finishReason set to the provider's failure reason ("errored",
+    /// "batch_expired", ...; `batchSlotError` when the provider gives none) and
     /// finishMessage set to the provider's error message. A request with no
-    /// result line reads finishReason "missing". Results whose request id is
-    /// not one this SDK assigned (a batch created elsewhere, resumed by ID)
-    /// follow the indexed ones in file order.
+    /// result line reads finishReason `batchSlotMissing`. Results whose request
+    /// id is not one this SDK assigned (a batch created elsewhere, resumed by
+    /// ID) follow the indexed ones in file order.
     public func wait() async throws -> [Response] {
         var adapter = try makeAdapter()
         adapter.lc.pollInterval = interval
@@ -81,7 +81,8 @@ enum Batch {
         images: [InputImage] = [],
         files: [FileRef] = [],
         history: [Transforms.Msg] = [],
-        options: PromptOptions
+        options: PromptOptions,
+        raw: Bool = false
     ) async throws -> BatchJob {
         guard let batch = batchConfig(config.name) else {
             throw LLMKitError.validation(field: "provider", message: "batching not supported: \(config.slug)")
@@ -131,7 +132,7 @@ enum Batch {
                 if batch.itemBodyField.isEmpty {
                     items.append(itemBody)
                 } else {
-                    items.append(.object([("custom_id", .string("req-\(index)")), (batch.itemBodyField, itemBody)]))
+                    items.append(.object([("custom_id", .string("\(batchRequestIdPrefix)\(index)")), (batch.itemBodyField, itemBody)]))
                 }
             }
             if !beta.isEmpty {
@@ -156,7 +157,7 @@ enum Batch {
         guard !batchId.isEmpty else {
             throw LLMKitError.unsupported("batch create: empty batch ID")
         }
-        let handle = BatchHandle(id: batchId, provider: config.name, raw: false)
+        let handle = BatchHandle(id: batchId, provider: config.name, raw: raw)
         return BatchJob(handle: handle, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride)
     }
 
@@ -191,7 +192,7 @@ enum Batch {
                 options: options, config: config, http: http, baseURLOverride: baseURLOverride
             )
             let line = JSONValue.object([
-                ("custom_id", .string("req-\(index)")),
+                ("custom_id", .string("\(batchRequestIdPrefix)\(index)")),
                 ("method", .string("POST")),
                 ("url", .string(batch.endpointPath)),
                 ("body", body),
@@ -282,107 +283,155 @@ struct BatchAdapter: JobAdapter {
         Job.classifyByConfig(lc, body)
     }
 
+    /// Reads every result source the lifecycle declares (HANDOFF-078), in this
+    /// order: the direct result endpoint (Anthropic), then the output file and
+    /// the error file whose IDs the status body carries (OpenAI). A file ID
+    /// that is absent is skipped; the call fails only when no source was read.
+    /// The status body is the already-decoded poll body, so no status GET is
+    /// needed; it also carries the request count that fixes the slot count.
     func result(_ body: PollBody) async throws -> [Response] {
-        // The output file ID lives in the already-decoded poll body (S1) — no
-        // redundant status GET.
-        let responseBody: String
-        if !lifecycle.resultFileIdPath.isEmpty {
-            let fileId = body.value().stringValue(at: lifecycle.resultFileIdPath)
-            guard !fileId.isEmpty else { throw LLMKitError.unsupported("batch results: empty output file ID") }
-            let url = base + lifecycle.fileContentEndpoint.replacingOccurrences(of: "{id}", with: fileId)
-            let (status, data) = try await http.getText(url: url, headers: headers)
-            guard (200..<300).contains(status) else {
-                throw ResponseParser.parseError(config: spec, statusCode: status, body: data)
-            }
-            responseBody = String(decoding: data, as: UTF8.self)
-        } else if !lifecycle.resultEndpoint.isEmpty {
-            let url = base + lifecycle.resultEndpoint.replacingOccurrences(of: "{id}", with: lc.id)
-            let (status, data) = try await http.getText(url: url, headers: headers)
-            guard (200..<300).contains(status) else {
-                throw ResponseParser.parseError(config: spec, statusCode: status, body: data)
-            }
-            responseBody = String(decoding: data, as: UTF8.self)
-        } else {
-            throw LLMKitError.unsupported("batch result endpoint not configured for \(spec.slug)")
+        let status = body.value()
+        var sources: [String] = []
+        if !lifecycle.resultEndpoint.isEmpty {
+            sources.append(try await fetch(
+                base + lifecycle.resultEndpoint.replacingOccurrences(of: "{id}", with: lc.id)
+            ))
         }
-        return parseResults(responseBody)
+        for idPath in [lifecycle.resultFileIdPath, lifecycle.errorFileIdPath] where !idPath.isEmpty {
+            let fileId = status.stringValue(at: idPath)
+            if fileId.isEmpty { continue }
+            sources.append(try await fetch(
+                base + lifecycle.fileContentEndpoint.replacingOccurrences(of: "{id}", with: fileId)
+            ))
+        }
+        guard !sources.isEmpty else {
+            throw LLMKitError.unsupported("batch results: no result source for \(spec.slug) batch \(lc.id)")
+        }
+        return parseResults(sources, count: Self.requestCount(status, batch.requestCountPaths))
     }
 
-    /// One Response per submitted request, at that request's index (BUG-072).
-    /// Providers return result lines in any order, so a line is placed by the
-    /// request id at `resultKeyPath`: "req-N" goes to index N. A line with no
-    /// decodable body at `resultBodyPath` is a failed request and keeps its
-    /// slot (see `parseResultLine`). An index with no line reads finishReason
-    /// "missing". Lines whose id is not "req-N" (a batch created outside
-    /// llmkit, or a repeated id) follow the indexed slots in file order. A line
-    /// that is not JSON cannot be placed and is skipped; its index reads
-    /// "missing".
-    func parseResults(_ data: String) -> [Response] {
-        var slots: [Response?] = []
-        var unkeyed: [Response] = []
-        for rawLine in data.split(separator: "\n") {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
-            if line.isEmpty { continue }
-            guard let wrapper = try? JSONValue.parse(line) else { continue }
-            let response = parseResultLine(line, wrapper)
+    private func fetch(_ url: String) async throws -> String {
+        let (status, data) = try await http.getText(url: url, headers: headers)
+        guard (200..<300).contains(status) else {
+            throw ResponseParser.parseError(config: spec, statusCode: status, body: data)
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
 
-            guard !batch.resultKeyPath.isEmpty,
-                  let index = Self.requestIndex(wrapper.lookup(batch.resultKeyPath)),
-                  index >= slots.count || slots[index] == nil
-            else {
-                unkeyed.append(response)
-                continue
+    /// The sum of the numbers at `paths` in the status body, or nil when no
+    /// path resolves to a number.
+    static func requestCount(_ status: JSONValue, _ paths: [String]) -> Int? {
+        var total: Int?
+        for path in paths {
+            if let n = status.optTruncatedInt(at: path) { total = (total ?? 0) + n }
+        }
+        return total.map { max(0, $0) }
+    }
+
+    /// One parsed result line waiting for its index.
+    private struct Slot {
+        var response: Response
+        var succeeded: Bool
+    }
+
+    /// One Response per submitted request, at that request's index (BUG-072,
+    /// HANDOFF-078). Providers return result lines in any order, so a line is
+    /// placed by the request id at `resultKeyPath`: `batchRequestIdPrefix` + N
+    /// goes to index N. When one index appears twice, a line that succeeded
+    /// replaces a failed one, a failed line never replaces a succeeded one, and
+    /// otherwise the later line follows the indexed slots.
+    ///
+    /// With a request count there are exactly `count` slots, and an id at or
+    /// above the count follows them. Without one, slots run to the highest
+    /// index seen. An index with no line reads `batchSlotMissing`. Lines whose
+    /// id has another form (a batch created outside llmkit) follow the indexed
+    /// slots in source order. A line that is not JSON cannot be placed and is
+    /// skipped.
+    func parseResults(_ sources: [String], count: Int?) -> [Response] {
+        var slots = [Slot?](repeating: nil, count: count ?? 0)
+        var unkeyed: [Response] = []
+        for data in sources {
+            for rawLine in data.split(separator: "\n") {
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                if line.isEmpty { continue }
+                guard let wrapper = try? JSONValue.parse(line) else { continue }
+                let slot = parseResultLine(line, wrapper)
+
+                guard !batch.resultKeyPath.isEmpty,
+                      let index = Self.requestIndex(wrapper.lookup(batch.resultKeyPath)),
+                      count.map({ index < $0 }) ?? true
+                else {
+                    unkeyed.append(slot.response)
+                    continue
+                }
+                if index >= slots.count {
+                    slots.append(contentsOf: [Slot?](repeating: nil, count: index - slots.count + 1))
+                }
+                switch slots[index] {
+                case nil:
+                    slots[index] = slot
+                case let existing? where slot.succeeded && !existing.succeeded:
+                    slots[index] = slot
+                case let existing? where existing.succeeded && !slot.succeeded:
+                    break  // The request succeeded; a failed duplicate adds nothing.
+                default:
+                    unkeyed.append(slot.response)
+                }
             }
-            if index >= slots.count {
-                slots.append(contentsOf: Array(repeating: nil, count: index - slots.count + 1))
-            }
-            slots[index] = response
         }
         let missing = Response(
-            text: "", usage: Usage(), finishReason: "missing", finishMessage: nil, raw: nil
+            text: "", usage: Usage(), finishReason: batchSlotMissing, finishMessage: nil, raw: nil
         )
-        return slots.map { $0 ?? missing } + unkeyed
+        return slots.map { $0?.response ?? missing } + unkeyed
     }
 
-    /// Decodes one result line. A line whose body is missing at
-    /// `resultBodyPath`, or does not decode, becomes a failed Response: empty
-    /// text, finishReason from `resultStatusPath` ("error" when the provider
-    /// has none), finishMessage from `resultErrorPath`.
-    private func parseResultLine(_ line: String, _ wrapper: JSONValue) -> Response {
-        // VERBATIM, not parse-navigate-re-serialize: the inner body is what
-        // ADR-085 captures the assistant turn from, and serializing a parsed
-        // tree emits the SDK's rendering, not the provider's. Harmless while
-        // only scalars were read out of it; not harmless once a payload is
-        // captured from the same bytes.
-        let body = batch.resultBodyPath.isEmpty
-            ? line
-            : ProviderTurnCapture.extractRawJSONPath(line, batch.resultBodyPath)
-        // Batch is Chat-Completions-only (ADR-055): an empty wire shape
-        // selects the provider's declared response paths, not the Responses
-        // output[] arm.
-        if let body, body.first == "{",
-           let response = try? decodeResponse(spec.name, "", Data(body.utf8)) {
-            return response
+    /// Decodes one result line. The line succeeded when the value at
+    /// `resultStatusPath` is one of `resultSuccessValues` (any value when the
+    /// provider declares no status path) and its body at `resultBodyPath` is a
+    /// JSON object that decodes. Every other line is a failed Response: empty
+    /// text, the first `resultReasonPaths` value as finishReason
+    /// (`batchSlotError` when none resolves) and the first `resultMessagePaths`
+    /// value as finishMessage. With raw on, a succeeded Response carries its
+    /// body and a failed one the whole line.
+    private func parseResultLine(_ line: String, _ wrapper: JSONValue) -> Slot {
+        let signalled = batch.resultStatusPath.isEmpty
+            || batch.resultSuccessValues.contains(wrapper.stringValue(at: batch.resultStatusPath))
+        if signalled {
+            // VERBATIM, not parse-navigate-re-serialize: the inner body is what
+            // ADR-085 captures the assistant turn from, and serializing a parsed
+            // tree emits the SDK's rendering, not the provider's.
+            let body = batch.resultBodyPath.isEmpty
+                ? line
+                : ProviderTurnCapture.extractRawJSONPath(line, batch.resultBodyPath)
+            // Batch is Chat-Completions-only (ADR-055): an empty wire shape
+            // selects the provider's declared response paths, not the Responses
+            // output[] arm.
+            if let body, body.first == "{",
+               let response = try? decodeResponseRaw(spec.name, "", Data(body.utf8), raw: raw) {
+                return Slot(response: response, succeeded: true)
+            }
         }
-        return Response(
+        let failed = Response(
             text: "",
             usage: Usage(),
-            finishReason: Self.string(wrapper, batch.resultStatusPath) ?? "error",
-            finishMessage: Self.string(wrapper, batch.resultErrorPath),
+            finishReason: Self.firstPath(wrapper, batch.resultReasonPaths) ?? batchSlotError,
+            finishMessage: Self.firstPath(wrapper, batch.resultMessagePaths),
             raw: nil
         )
+        return Slot(response: attachRaw(failed, raw: raw) { wrapper }, succeeded: false)
     }
 
-    /// A non-empty string at `path`, or nil (also when `path` is empty).
-    private static func string(_ value: JSONValue, _ path: String) -> String? {
-        guard !path.isEmpty, case let .string(s)? = value.lookup(path), !s.isEmpty else { return nil }
-        return s
+    /// The value at the first path that resolves to a non-empty scalar,
+    /// rendered as a string; nil when none does.
+    private static func firstPath(_ value: JSONValue, _ paths: [String]) -> String? {
+        paths.lazy.map { value.stringValue(at: $0) }.first { !$0.isEmpty }
     }
 
-    /// N out of the "req-N" id the SDK sends with request N; nil for any other id.
+    /// N out of the `batchRequestIdPrefix` + N id the SDK sends with request
+    /// N; nil for any other id.
     static func requestIndex(_ id: JSONValue?) -> Int? {
-        guard case let .string(id)? = id, id.hasPrefix("req-") else { return nil }
-        let digits = id.dropFirst(4)
+        guard case let .string(id)? = id, id.hasPrefix(batchRequestIdPrefix) else { return nil }
+        let digits = id.dropFirst(batchRequestIdPrefix.count)
         guard !digits.isEmpty, digits.allSatisfy({ ("0"..."9").contains($0) }) else { return nil }
         return Int(digits)
     }
