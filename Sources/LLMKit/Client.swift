@@ -202,7 +202,8 @@ public struct Text: Sendable {
     var textParts: [String] = []
     /// Conversation history prepended to the user turn by `.history(...)`.
     var historyMsgs: [Message] = []
-    /// Opt into `Response.raw` (ADR-014). Honored by `prompt(_:)`; `stream` has
+    /// Opt into `Response.raw` (ADR-014). Honored by `prompt(_:)` and carried
+    /// onto the `BatchJob` by `batch(_:)` (BUG-073); `stream` has
     /// no single provider body to carry, and Go's `Stream` does not honor it
     /// either.
     var rawOptIn: Bool = false
@@ -342,10 +343,7 @@ public struct Text: Sendable {
             guard (200..<300).contains(statusCode) else {
                 throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
             }
-            var response = try decodeResponse(provider, wireShape, data)
-            if rawOptIn {
-                response.raw = try JSONValue.parse(String(decoding: data, as: UTF8.self))
-            }
+            let response = try decodeResponseRaw(provider, wireShape, data, raw: rawOptIn)
             postEvent.duration = Date().timeIntervalSince(start)
             postEvent.usage = response.usage
             Middleware.firePost(options.middleware, postEvent)
@@ -395,7 +393,7 @@ public struct Text: Sendable {
                 config: config, apiKey: apiKey, http: http, baseURLOverride: baseURLOverride,
                 model: model, system: systemPrompt, prompts: prompts,
                 images: inputImages, files: inputFiles,
-                history: Transforms.msgs(from: historyMsgs), options: options
+                history: Transforms.msgs(from: historyMsgs), options: options, raw: rawOptIn
             )
             postEvent.duration = Date().timeIntervalSince(start)
             Middleware.firePost(options.middleware, postEvent)
