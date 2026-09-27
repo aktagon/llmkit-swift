@@ -25,9 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `batchSlotMissing` and `batchSlotError`: the finish reasons of a batch slot with no result, and of a
-  failed slot the provider gave no reason for. Compare against them instead
-  of typing the strings.
+- `batchSlotMissing` and `batchSlotError`: the finish reasons of a batch slot
+  with no result, and of a failed slot the provider gave no reason for.
+  Compare against them instead of typing the strings.
+- `Agent` takes the same generation options as `Text`: `temperature`,
+  `maxTokens`, `topP`, `topK`, `seed`, `stopSequences`, `frequencyPenalty`,
+  `presencePenalty`, `reasoningEffort`, `thinkingBudget` and
+  `safetySettings`. `Agent.history(...)` seeds the conversation, and
+  `Agent.raw()` puts the last turn's provider body on `Response.raw`.
+- `Image.mask(_:_:)` limits an edit to the masked area (OpenAI, Vertex).
+  OpenAI image edits with reference images now work; they used to throw
+  `unsupported`.
 
 ### Fixed
 
