@@ -10,9 +10,9 @@ import Foundation
 /// provider name (BUG-024). Pre-flight validation rejects unsupported aspect
 /// ratios / sizes / reference-image counts before any HTTP call.
 ///
-/// Scope: the JSON generation path for every provider. OpenAI's
-/// `multipart/form-data` edit branch is a documented wire exclusion (WIRE-008)
-/// and is not implemented here.
+/// Scope: the JSON path for every provider, plus OpenAI's `multipart/form-data`
+/// `/v1/images/edits` branch (reference images + optional mask). The multipart
+/// branch has no request-wire golden (WIRE-008); its unit test is the authority.
 public struct Image: Sendable {
     let provider: ProviderName
     let apiKey: String
@@ -63,6 +63,13 @@ public struct Image: Sendable {
     /// at wire time. Multiple `.image(...)` calls accumulate in caller order.
     public func image(_ mimeType: String, _ data: Data) -> Image {
         with { $0.inputImages.append(MediaRef(mimeType: mimeType, bytes: [UInt8](data))) }
+    }
+
+    /// Attach an inpainting mask (transparent pixels mark the region to edit).
+    /// OpenAI's `/v1/images/edits` form (requires at least one `.image(...)`)
+    /// and Vertex Imagen only; every other provider rejects it pre-flight.
+    public func mask(_ mimeType: String, _ data: Data) -> Image {
+        with { $0.options.mask = MediaRef(mimeType: mimeType, bytes: [UInt8](data)) }
     }
 
     /// Register a middleware hook (observation + pre-phase veto).
@@ -181,6 +188,7 @@ public struct Image: Sendable {
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
             try reject(options.count.map { String($0) }, "count", slug)
+            try rejectMask(slug)
             // Google takes safetySettings (wired in buildGoogleBody) but has no
             // single-threshold safetyFilter knob — that is Vertex Imagen's.
             if options.safetyFilter != nil {
@@ -193,6 +201,7 @@ public struct Image: Sendable {
             try reject(options.quality, "quality", slug)
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
+            try rejectMask(slug)
             try reject(options.safetyFilter, "safety_filter", slug)
             try rejectSafetySettings(slug)
         case "JSONPredict":
@@ -217,13 +226,26 @@ public struct Image: Sendable {
             try reject(options.quality, "quality", slug)
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
+            try rejectMask(slug)
             try reject(options.safetyFilter, "safety_filter", slug)
             try rejectSafetySettings(slug)
         default:
             // MultipartForm (OpenAI): quality / output_format / background /
-            // count are all valid; neither safety knob is.
+            // count are all valid; neither safety knob is. A mask rides only
+            // the edits form, which needs at least one reference image.
+            if options.mask != nil, imageCount == 0 {
+                throw LLMKitError.validation(
+                    field: "mask", message: "requires at least one image part (edits branch only)"
+                )
+            }
             try reject(options.safetyFilter, "safety_filter", slug)
             try rejectSafetySettings(slug)
+        }
+    }
+
+    private func rejectMask(_ slug: String) throws {
+        if options.mask != nil {
+            throw LLMKitError.validation(field: "mask", message: "not supported by \(slug)")
         }
     }
 
@@ -248,6 +270,14 @@ public struct Image: Sendable {
         let headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
         let hasImages = parts.contains(where: \.isImage)
 
+        if imgCfg.inputMode == "MultipartForm", hasImages {
+            let (fields, files) = buildOpenAIEditForm(parts, model)
+            let (statusCode, data) = try await http.postMultipart(
+                url: base + imgCfg.editEndpoint, fields: fields, files: files, headers: headers
+            )
+            return try decode(statusCode, data, imgCfg: imgCfg, config: config)
+        }
+
         let url: String
         let body: JSONValue
         switch imgCfg.inputMode {
@@ -257,10 +287,7 @@ public struct Image: Sendable {
         case "JSONGenerations":
             body = buildRecraftBody(parts, model)
             url = base + imgCfg.genEndpoint
-        case "MultipartForm":
-            guard !hasImages else {
-                throw LLMKitError.unsupported("image editing (multipart/form-data) is not supported by the Swift SDK (WIRE-008)")
-            }
+        case "MultipartForm": // generations; the edits form returned above
             body = buildOpenAIBody(parts, model)
             url = base + imgCfg.genEndpoint
         case "JSONPredict":
@@ -278,6 +305,12 @@ public struct Image: Sendable {
         }
 
         let (statusCode, data) = try await http.postJSON(url: url, body: body, headers: headers)
+        return try decode(statusCode, data, imgCfg: imgCfg, config: config)
+    }
+
+    private func decode(
+        _ statusCode: Int, _ data: Data, imgCfg: ImageGenDef, config: ProviderSpec
+    ) throws -> ImageResponse {
         guard (200..<300).contains(statusCode) else {
             throw ResponseParser.parseError(config: config, statusCode: statusCode, body: data)
         }
@@ -343,6 +376,48 @@ public struct Image: Sendable {
         return .object(body)
     }
 
+    /// OpenAI `/v1/images/edits` multipart form (mirror of Go's
+    /// `buildOpenAIEditMultipart`). Text fields first; then one `image[]` file
+    /// per reference image in caller order, then the optional `mask` file.
+    private func buildOpenAIEditForm(
+        _ parts: [ImagePart], _ model: String
+    ) -> ([(String, String)], [HTTPClient.MultipartFile]) {
+        var fields: [(String, String)] = [("model", model), ("prompt", joinText(parts))]
+        if let size = options.imageSize { fields.append(("size", size)) }
+        if let quality = options.quality { fields.append(("quality", quality)) }
+        if let format = options.outputFormat { fields.append(("output_format", format)) }
+        if let background = options.background { fields.append(("background", background)) }
+        if let count = options.count { fields.append(("n", String(count))) }
+
+        var files: [HTTPClient.MultipartFile] = []
+        for part in parts {
+            guard case let .image(media) = part else { continue }
+            let mime = media.mimeType.isEmpty ? "image/png" : media.mimeType
+            files.append((
+                field: "image[]", filename: "image-\(files.count)\(extFromMime(mime))",
+                contentType: mime, data: Data(media.bytes)
+            ))
+        }
+        if let mask = options.mask {
+            let mime = mask.mimeType.isEmpty ? "image/png" : mask.mimeType
+            files.append((
+                field: "mask", filename: "mask\(extFromMime(mime))",
+                contentType: mime, data: Data(mask.bytes)
+            ))
+        }
+        return (fields, files)
+    }
+
+    /// File extension for a multipart filename (mirror of Go's `extFromMime`).
+    private func extFromMime(_ mime: String) -> String {
+        switch mime {
+        case "image/png": return ".png"
+        case "image/jpeg", "image/jpg": return ".jpg"
+        case "image/webp": return ".webp"
+        default: return ".bin"
+        }
+    }
+
     /// Recraft `/v1/images/generations` JSON body. `response_format` is forced to
     /// `b64_json` (Recraft defaults to URL delivery) so the decode path is
     /// uniform; vector/SVG output is selected by the model id, not a body flag.
@@ -402,6 +477,11 @@ public struct Image: Sendable {
                 ])))
                 break // Vertex Imagen takes a single edit-target image
             }
+        }
+        if let mask = options.mask {
+            instance.append(("mask", .object([("image", .object([
+                ("bytesBase64Encoded", .string(Data(mask.bytes).base64EncodedString())),
+            ]))])))
         }
         var parameters: [(String, JSONValue)] = [("sampleCount", .int(Int64(options.count ?? 1)))]
         if let ratio = options.aspectRatio { parameters.append(("aspectRatio", .string(ratio))) }
@@ -540,4 +620,6 @@ struct ImageOptions: Sendable {
     var safetySettings: [SafetySetting] = []
     /// Opt into `ImageResponse.raw` (the parsed provider body, ADR-014).
     var raw: Bool = false
+    /// Inpainting mask: OpenAI's edits form and Vertex Imagen only.
+    var mask: MediaRef?
 }

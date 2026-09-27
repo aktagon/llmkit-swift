@@ -19,6 +19,7 @@ public final class Agent {
     private var tools: [Tool] = []
     private var history: [Transforms.Msg] = []
     private var maxToolIterations = 10
+    private var rawOptIn = false
 
     init(provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient) {
         self.provider = provider
@@ -56,6 +57,67 @@ public final class Agent {
     public func addMiddleware(_ hook: @escaping MiddlewareFn) -> Agent {
         options.middleware.append(hook); return self
     }
+
+    /// Set the maximum number of output tokens per turn. Returns self.
+    @discardableResult
+    public func maxTokens(_ maxTokens: Int) -> Agent { options.maxTokens = maxTokens; return self }
+
+    /// Set the sampling temperature. Returns self.
+    @discardableResult
+    public func temperature(_ value: Double) -> Agent { options.temperature = value; return self }
+
+    /// Set nucleus-sampling top-p. Returns self.
+    @discardableResult
+    public func topP(_ value: Double) -> Agent { options.topP = value; return self }
+
+    /// Set top-k sampling. Returns self.
+    @discardableResult
+    public func topK(_ value: Int) -> Agent { options.topK = value; return self }
+
+    /// Set the sampling seed. Returns self.
+    @discardableResult
+    public func seed(_ value: Int) -> Agent { options.seed = Int64(value); return self }
+
+    /// Set the frequency penalty. Returns self.
+    @discardableResult
+    public func frequencyPenalty(_ value: Double) -> Agent { options.frequencyPenalty = value; return self }
+
+    /// Set the presence penalty. Returns self.
+    @discardableResult
+    public func presencePenalty(_ value: Double) -> Agent { options.presencePenalty = value; return self }
+
+    /// Set the extended-thinking token budget. Returns self.
+    @discardableResult
+    public func thinkingBudget(_ value: Int) -> Agent { options.thinkingBudget = value; return self }
+
+    /// Set the reasoning effort level. Returns self.
+    @discardableResult
+    public func reasoningEffort(_ value: String) -> Agent { options.reasoningEffort = value; return self }
+
+    /// Set the stop sequences. Returns self.
+    @discardableResult
+    public func stopSequences(_ values: [String]) -> Agent { options.stopSequences = values; return self }
+
+    /// Set the per-category safety thresholds (Google). Returns self.
+    @discardableResult
+    public func safetySettings(_ values: [SafetySetting]) -> Agent { options.safetySettings = values; return self }
+
+    /// Replace the conversation history with `msgs`. The next `prompt` sends
+    /// these turns before its own user turn.
+    ///
+    /// ADR-085 RSN-005 — a message you author here carries no captured
+    /// provider payload, so an assistant turn with tool calls is rebuilt from
+    /// its role, content and tool calls alone. To preserve provider reasoning,
+    /// pass back the messages this SDK produced.
+    @discardableResult
+    public func history(_ msgs: Message...) -> Agent {
+        history = Transforms.msgs(from: msgs); return self
+    }
+
+    /// Opt into the parsed provider body of the last turn on the final
+    /// `Response.raw` (ADR-014). Returns self.
+    @discardableResult
+    public func raw() -> Agent { rawOptIn = true; return self }
 
     /// Append a user turn and run the tool loop to a final text answer.
     @discardableResult
@@ -124,11 +186,12 @@ public final class Agent {
                 history.append(
                     replayable(.text(role: "assistant", text: parsed.text), parsed.providerTurn)
                 )
-                return Response(
+                let final = Response(
                     text: parsed.text, usage: totalUsage ?? Usage(),
                     finishReason: parsed.finishReason, finishMessage: parsed.finishMessage,
                     raw: nil, providerTurn: parsed.providerTurn
                 )
+                return attachRaw(final, raw: rawOptIn) { raw }
             }
 
             // Record the assistant turn. The calls are the projection the loop runs

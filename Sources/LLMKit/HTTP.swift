@@ -186,7 +186,22 @@ struct HTTPClient: Sendable {
     func postMultipart(
         url: String,
         fields: [(String, String)],
-        file: (field: String, filename: String, contentType: String, data: Data),
+        file: MultipartFile,
+        headers: [(String, String)]
+    ) async throws -> (statusCode: Int, data: Data) {
+        try await postMultipart(url: url, fields: fields, files: [file], headers: headers)
+    }
+
+    /// One file part of a `multipart/form-data` body.
+    typealias MultipartFile = (field: String, filename: String, contentType: String, data: Data)
+
+    /// POST a `multipart/form-data` body: the text fields in caller order, then
+    /// the file parts in caller order (mirrors Go's `doMultipartPostMulti`).
+    /// Used by the OpenAI image-edit form (one `image[]` per reference + `mask`).
+    func postMultipart(
+        url: String,
+        fields: [(String, String)],
+        files: [MultipartFile],
         headers: [(String, String)]
     ) async throws -> (statusCode: Int, data: Data) {
         guard let endpoint = URL(string: url) else {
@@ -200,11 +215,14 @@ struct HTTPClient: Sendable {
             append("Content-Disposition: form-data; name=\"\(escapeQuotes(name))\"\r\n\r\n")
             append("\(value)\r\n")
         }
-        append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"\(escapeQuotes(file.field))\"; filename=\"\(escapeQuotes(file.filename))\"\r\n")
-        append("Content-Type: \(file.contentType)\r\n\r\n")
-        payload.append(file.data)
-        append("\r\n--\(boundary)--\r\n")
+        for file in files {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"\(escapeQuotes(file.field))\"; filename=\"\(escapeQuotes(file.filename))\"\r\n")
+            append("Content-Type: \(file.contentType)\r\n\r\n")
+            payload.append(file.data)
+            append("\r\n")
+        }
+        append("--\(boundary)--\r\n")
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
