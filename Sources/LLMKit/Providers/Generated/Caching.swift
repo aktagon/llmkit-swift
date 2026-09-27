@@ -18,6 +18,7 @@ struct ResourceLifecycleDef: Sendable, Equatable {
     let resultEndpoint: String
     let resultResponsePath: String
     let resultFileIdPath: String
+    let errorFileIdPath: String
     let fileContentEndpoint: String
 }
 
@@ -60,6 +61,7 @@ func cachingConfig(_ provider: ProviderName) -> CachingDef? {
                     resultEndpoint: "",
                     resultResponsePath: "",
                     resultFileIdPath: "",
+                    errorFileIdPath: "",
                     fileContentEndpoint: ""
                 )
         )
