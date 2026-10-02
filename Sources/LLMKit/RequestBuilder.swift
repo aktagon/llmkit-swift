@@ -57,7 +57,7 @@ enum RequestBuilder {
         }
 
         let maxTokens = options.maxTokens ?? config.defaultMaxTokens
-        if let maxKey = resolveOptionKey(config.name, model, .maxTokens) {
+        if let maxKey = resolveOptionKey(config.name, model, wireShape, .maxTokens) {
             JSONObject.set(&body, maxKey, .int(Int64(maxTokens)))
         }
 
@@ -101,8 +101,8 @@ enum RequestBuilder {
         // extras (ADR-029) always deep-merge at the true body root.
         if !config.wrapsOptionsIn.isEmpty {
             var wrapped: [(String, JSONValue)] = []
-            let rootExtras = addOptions(&wrapped, config, model, options)
-            if let maxKey = resolveOptionKey(config.name, model, .maxTokens) {
+            let rootExtras = addOptions(&wrapped, config, model, wireShape, options)
+            if let maxKey = resolveOptionKey(config.name, model, wireShape, .maxTokens) {
                 JSONObject.insertNested(&wrapped, maxKey, .int(Int64(maxTokens)))
                 JSONObject.remove(&body, maxKey)
             }
@@ -111,7 +111,7 @@ enum RequestBuilder {
             }
             JSONObject.deepMerge(&body, rootExtras)
         } else {
-            let rootExtras = addOptions(&body, config, model, options)
+            let rootExtras = addOptions(&body, config, model, wireShape, options)
             JSONObject.deepMerge(&body, rootExtras)
         }
 
@@ -139,15 +139,6 @@ enum RequestBuilder {
                 headers[index].1 = appendBeta(headers[index].1, beta)
             } else {
                 headers.append(("anthropic-beta", beta))
-            }
-        }
-
-        // ADR-055 Responses body fixup: the output-token cap is named
-        // `max_output_tokens` (not `max_tokens`) on the Responses envelope.
-        if wireShape == "ChatResponsesOpenAI" {
-            if let value = JSONObject.value(body, "max_tokens") {
-                JSONObject.remove(&body, "max_tokens")
-                JSONObject.set(&body, "max_output_tokens", value)
             }
         }
 
@@ -320,20 +311,21 @@ enum RequestBuilder {
         _ body: inout [(String, JSONValue)],
         _ config: ProviderSpec,
         _ model: String,
+        _ wireShape: String,
         _ options: PromptOptions
     ) -> [(String, JSONValue)] {
         var rootExtras: [(String, JSONValue)] = []
-        maybeInsert(&body, config, model, .temperature, options.temperature.map { .double($0) }, &rootExtras)
-        maybeInsert(&body, config, model, .topP, options.topP.map { .double($0) }, &rootExtras)
-        maybeInsert(&body, config, model, .topK, options.topK.map { .int(Int64($0)) }, &rootExtras)
-        maybeInsert(&body, config, model, .seed, options.seed.map { .int($0) }, &rootExtras)
-        maybeInsert(&body, config, model, .frequencyPenalty, options.frequencyPenalty.map { .double($0) }, &rootExtras)
-        maybeInsert(&body, config, model, .presencePenalty, options.presencePenalty.map { .double($0) }, &rootExtras)
-        maybeInsert(&body, config, model, .thinkingBudget, options.thinkingBudget.map { .int(Int64($0)) }, &rootExtras)
-        maybeInsert(&body, config, model, .reasoningEffort, options.reasoningEffort.map { .string($0) }, &rootExtras)
+        maybeInsert(&body, config, model, wireShape, .temperature, options.temperature.map { .double($0) }, &rootExtras)
+        maybeInsert(&body, config, model, wireShape, .topP, options.topP.map { .double($0) }, &rootExtras)
+        maybeInsert(&body, config, model, wireShape, .topK, options.topK.map { .int(Int64($0)) }, &rootExtras)
+        maybeInsert(&body, config, model, wireShape, .seed, options.seed.map { .int($0) }, &rootExtras)
+        maybeInsert(&body, config, model, wireShape, .frequencyPenalty, options.frequencyPenalty.map { .double($0) }, &rootExtras)
+        maybeInsert(&body, config, model, wireShape, .presencePenalty, options.presencePenalty.map { .double($0) }, &rootExtras)
+        maybeInsert(&body, config, model, wireShape, .thinkingBudget, options.thinkingBudget.map { .int(Int64($0)) }, &rootExtras)
+        maybeInsert(&body, config, model, wireShape, .reasoningEffort, options.reasoningEffort.map { .string($0) }, &rootExtras)
         if !options.stopSequences.isEmpty {
             maybeInsert(
-                &body, config, model, .stopSequences,
+                &body, config, model, wireShape, .stopSequences,
                 .array(options.stopSequences.map { .string($0) }), &rootExtras
             )
         }
@@ -344,12 +336,13 @@ enum RequestBuilder {
         _ body: inout [(String, JSONValue)],
         _ config: ProviderSpec,
         _ model: String,
+        _ wireShape: String,
         _ key: OptionKey,
         _ value: JSONValue?,
         _ rootExtras: inout [(String, JSONValue)]
     ) {
         guard let value else { return }
-        guard let jsonKey = resolveOptionKey(config.name, model, key) else { return }
+        guard let jsonKey = resolveOptionKey(config.name, model, wireShape, key) else { return }
         JSONObject.insertNested(&body, jsonKey, value)
 
         // Static sibling fields from the option override (e.g. Anthropic's
@@ -367,10 +360,16 @@ enum RequestBuilder {
         }
     }
 
-    /// Wire (JSON) key for `key` on `(provider, model)`. Per-model overrides
-    /// (ADR-024) outrank the provider default: an exact id match wins outright,
-    /// else the longest-prefix glob wins, else the provider's supported-options key.
-    static func resolveOptionKey(_ provider: ProviderName, _ model: String, _ key: OptionKey) -> String? {
+    /// Wire (JSON) key for `key` on `(provider, model)` under the effective chat
+    /// wire shape. A wire-shape key (BUG-075) outranks everything: the Responses
+    /// shape names MaxTokens `max_output_tokens` for every model. Next, per-model
+    /// overrides (ADR-024) outrank the provider default: an exact id match wins
+    /// outright, else the longest-prefix glob wins, else the provider's
+    /// supported-options key.
+    static func resolveOptionKey(
+        _ provider: ProviderName, _ model: String, _ wireShape: String, _ key: OptionKey
+    ) -> String? {
+        if let shapeKey = wireShapeOptionOverrides(wireShape)[key] { return shapeKey }
         var bestKey: String?
         var bestLen = -1
         for override in modelOptionOverrides(provider) where override.key == key {
