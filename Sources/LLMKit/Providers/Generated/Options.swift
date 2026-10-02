@@ -525,3 +525,13 @@ func modelOptionOverrides(_ provider: ProviderName) -> [ModelOptionOverrideDef] 
     case .zhipu: return []
     }
 }
+
+/// Wire keys a chat wire shape uses for generation params, for every model.
+/// They outrank `modelOptionOverrides` and the provider's supported-options
+/// table (BUG-075).
+func wireShapeOptionOverrides(_ chatWireShape: String) -> [OptionKey: String] {
+    switch chatWireShape {
+    case "ChatResponsesOpenAI": return [.maxTokens: "max_output_tokens"]
+    default: return [:]
+    }
+}
