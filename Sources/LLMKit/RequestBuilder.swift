@@ -136,11 +136,16 @@ enum RequestBuilder {
         }
 
         // ADR-055 Responses body fixup: the output-token cap is named
-        // `max_output_tokens` (not `max_tokens`) on the Responses envelope.
+        // `max_output_tokens` (not `max_tokens`) on the Responses envelope. A
+        // per-model override may already have renamed the cap to
+        // `max_completion_tokens` (gpt-5, o-series), which Responses rejects
+        // too (BUG-075), so both keys are renamed.
         if wireShape == "ChatResponsesOpenAI" {
-            if let value = JSONObject.value(body, "max_tokens") {
-                JSONObject.remove(&body, "max_tokens")
-                JSONObject.set(&body, "max_output_tokens", value)
+            for key in ["max_tokens", "max_completion_tokens"] {
+                if let value = JSONObject.value(body, key) {
+                    JSONObject.remove(&body, key)
+                    JSONObject.set(&body, "max_output_tokens", value)
+                }
             }
         }
 
