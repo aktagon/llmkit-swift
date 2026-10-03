@@ -137,10 +137,15 @@ enum RequestBuilder {
 
         //
         //
+        //
+        //
+        //
         if wireShape == "ChatResponsesOpenAI" {
-            if let value = JSONObject.value(body, "max_tokens") {
-                JSONObject.remove(&body, "max_tokens")
-                JSONObject.set(&body, "max_output_tokens", value)
+            for key in ["max_tokens", "max_completion_tokens"] {
+                if let value = JSONObject.value(body, key) {
+                    JSONObject.remove(&body, key)
+                    JSONObject.set(&body, "max_output_tokens", value)
+                }
             }
         }
 
