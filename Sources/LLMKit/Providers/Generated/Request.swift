@@ -397,7 +397,7 @@ func fileUploadConfig(_ provider: ProviderName) -> FileUploadDef? {
             endpoint: "/v1/files",
             fieldName: "file",
             extraFieldsJSON: "",
-            betaHeader: "files-api-2025-04-14",
+            betaHeader: "",
             responseIdPath: "id",
             responseUriPath: "",
             responseNamePath: "filename",
