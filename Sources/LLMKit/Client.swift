@@ -48,6 +48,20 @@ public struct Client: Sendable {
         )
     }
 
+    /// Set how long this client waits for the next bytes from the provider
+    /// before the request fails with `URLError(.timedOut)` (last call wins;
+    /// default 600 s). The wait covers the response headers and every gap
+    /// between body chunks, so a long healthy stream never times out. `0`
+    /// disables the timeout. Applies to every send path, including a
+    /// caller-supplied `URLSession` (BUG-062).
+    public func timeout(_ seconds: TimeInterval) -> Client {
+        Client(
+            provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride,
+            http: HTTPClient(session: http.session, customHeaders: http.customHeaders, timeout: seconds),
+            defaultMiddleware: defaultMiddleware
+        )
+    }
+
     /// Attach a custom HTTP header to every request for this client; calls
     /// accumulate (a repeated name replaces its prior value, case-insensitively).
     /// Applied after the provider auth + required headers and skipped on a
@@ -64,7 +78,7 @@ public struct Client: Sendable {
         }
         return Client(
             provider: provider, apiKey: apiKey, baseURLOverride: baseURLOverride,
-            http: HTTPClient(session: http.session, customHeaders: next),
+            http: HTTPClient(session: http.session, customHeaders: next, timeout: http.timeout),
             defaultMiddleware: defaultMiddleware
         )
     }
