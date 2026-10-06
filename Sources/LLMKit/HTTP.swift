@@ -29,20 +29,35 @@ struct HTTPClient: Sendable {
     /// clobber it. The single seam: because `http` is threaded to every builder
     /// and the catalogue path, carrying the headers here reaches every send path.
     let customHeaders: [(String, String)]
+    /// How long to wait for the next bytes from the provider (BUG-062, set via
+    /// `Client.timeout`). Defaults to the generated `defaultTimeout` (600 s).
+    let timeout: TimeInterval
 
-    init(session: URLSession = .shared, customHeaders: [(String, String)] = []) {
+    init(
+        session: URLSession = .shared, customHeaders: [(String, String)] = [],
+        timeout: TimeInterval = defaultTimeout
+    ) {
         self.session = session
         self.customHeaders = customHeaders
+        self.timeout = timeout
     }
 
     /// Append the caller custom headers, skipping any name already present on the
     /// request (HTTP header names are case-insensitive; `value(forHTTPHeaderField:)`
     /// matches case-insensitively). Mirrors Rust `build_catalogue_headers`'s and
     /// `apply_unsigned_headers`'s collision skip.
-    private func applyCustomHeaders(_ request: inout URLRequest) {
+    ///
+    /// Also sets the client timeout (BUG-062) as `URLRequest.timeoutInterval`,
+    /// which URLSession treats as an idle timeout: it bounds the wait for the
+    /// response headers and every gap between body chunks, so `bytes(for:)`
+    /// streams reset it per chunk. The request value overrides the session's
+    /// `timeoutIntervalForRequest`, so it holds for a caller-supplied session
+    /// too. `0` disables the timeout by mapping to `Int32.max` seconds.
+    private func applyClientConfig(_ request: inout URLRequest) {
         for (name, value) in customHeaders where request.value(forHTTPHeaderField: name) == nil {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        request.timeoutInterval = timeout > 0 ? timeout : TimeInterval(Int32.max)
     }
 
     /// POST a JSON body and return the status code + raw response bytes. The
@@ -63,7 +78,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
-        applyCustomHeaders(&request)
+        applyClientConfig(&request)
         guard let payload = body.serialized().data(using: .utf8) else {
             throw LLMKitError.validation(field: "body", message: "could not UTF-8 encode request body")
         }
@@ -103,7 +118,7 @@ struct HTTPClient: Sendable {
             region: region, service: service, contentType: "application/json"
         )
         for (name, value) in signed { request.setValue(value, forHTTPHeaderField: name) }
-        applyCustomHeaders(&request)
+        applyClientConfig(&request)
         request.httpBody = payload
 
         let (data, response) = try await session.data(for: request)
@@ -138,7 +153,7 @@ struct HTTPClient: Sendable {
             region: region, service: service, contentType: ""
         )
         for (name, value) in signed { request.setValue(value, forHTTPHeaderField: name) }
-        applyCustomHeaders(&request)
+        applyClientConfig(&request)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw LLMKitError.transport("non-HTTP response")
@@ -157,7 +172,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
-        applyCustomHeaders(&request)
+        applyClientConfig(&request)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw LLMKitError.transport("non-HTTP response")
@@ -228,7 +243,7 @@ struct HTTPClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
-        applyCustomHeaders(&request)
+        applyClientConfig(&request)
         request.httpBody = payload
 
         let (data, response) = try await session.data(for: request)
@@ -255,7 +270,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
-        applyCustomHeaders(&request)
+        applyClientConfig(&request)
         request.httpBody = body
 
         let (data, response) = try await session.data(for: request)
@@ -282,7 +297,7 @@ struct HTTPClient: Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
-        applyCustomHeaders(&request)
+        applyClientConfig(&request)
         guard let payload = body.serialized().data(using: .utf8) else {
             throw LLMKitError.validation(field: "body", message: "could not UTF-8 encode request body")
         }
