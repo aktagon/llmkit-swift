@@ -71,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] — 2026-07-19
 
 First release. Apple-only (Foundation + CryptoKit + URLSession, no external
-dependencies), distributed via SwiftPM. Born on the post-ADR-064 API so it
+dependencies), distributed via SwiftPM. Born on the handle-based batch API so it
 enters the pack at parity with the other SDKs' v2.0.0/v3.0.0 line.
 
 ### Added
