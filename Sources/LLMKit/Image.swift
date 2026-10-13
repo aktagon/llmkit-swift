@@ -497,7 +497,9 @@ public struct Image: Sendable {
     private func parseResponse(_ raw: JSONValue, _ cfg: ImageGenDef) throws -> ImageResponse {
         switch cfg.responseShape {
         case "DataArrayB64Json":
-            return parseDataArray(raw, inputPath: cfg.usageInputPath, outputPath: cfg.usageOutputPath)
+            return parseDataArray(
+                raw, inputPath: cfg.usageInputPath, outputPath: cfg.usageOutputPath,
+                reasoningPath: cfg.usageReasoningPath)
         case "VertexPredictions":
             return parseVertexResponse(raw)
         case "GoogleParts":
@@ -509,7 +511,9 @@ public struct Image: Sendable {
 
     /// OpenAI / xAI / Recraft `data[].b64_json` shape. SVG bytes (Recraft vector
     /// models) are sniffed to `image/svg+xml` when the provider echoes no mime.
-    private func parseDataArray(_ raw: JSONValue, inputPath: String, outputPath: String) -> ImageResponse {
+    private func parseDataArray(
+        _ raw: JSONValue, inputPath: String, outputPath: String, reasoningPath: String
+    ) -> ImageResponse {
         var images: [ImageData] = []
         var revised: [String] = []
         if case let .array(entries)? = raw.member("data") {
@@ -531,7 +535,8 @@ public struct Image: Sendable {
         }
         let usage = Usage(
             input: inputPath.isEmpty ? 0 : raw.intValue(at: inputPath),
-            output: outputPath.isEmpty ? 0 : raw.intValue(at: outputPath)
+            output: outputPath.isEmpty ? 0 : raw.intValue(at: outputPath),
+            reasoning: raw.optInt(at: reasoningPath)
         )
         return ImageResponse(
             images: images, text: revised.joined(separator: "\n"), usage: usage,
@@ -586,7 +591,8 @@ public struct Image: Sendable {
         }
         let usage = Usage(
             input: cfg.usageInputPath.isEmpty ? 0 : raw.intValue(at: cfg.usageInputPath),
-            output: cfg.usageOutputPath.isEmpty ? 0 : raw.intValue(at: cfg.usageOutputPath)
+            output: cfg.usageOutputPath.isEmpty ? 0 : raw.intValue(at: cfg.usageOutputPath),
+            reasoning: raw.optInt(at: cfg.usageReasoningPath)
         )
         return ImageResponse(
             images: images, text: text, usage: usage,
