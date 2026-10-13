@@ -18,6 +18,7 @@ public struct ImageGenDef: Sendable, Equatable {
     public let responseShape: String
     public let usageInputPath: String
     public let usageOutputPath: String
+    public let usageReasoningPath: String
     public let maxInputCount: Int
     public let genEndpoint: String
     public let editEndpoint: String
@@ -33,6 +34,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             responseShape: "GoogleParts",
             usageInputPath: "usageMetadata.promptTokenCount",
             usageOutputPath: "usageMetadata.candidatesTokenCount",
+            usageReasoningPath: "usageMetadata.thoughtsTokenCount",
             maxInputCount: 14,
             genEndpoint: "",
             editEndpoint: "",
@@ -60,6 +62,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             responseShape: "DataArrayB64Json",
             usageInputPath: "",
             usageOutputPath: "",
+            usageReasoningPath: "",
             maxInputCount: 16,
             genEndpoint: "/v1/images/generations",
             editEndpoint: "/v1/images/edits",
@@ -80,6 +83,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             responseShape: "DataArrayB64Json",
             usageInputPath: "usage.input_tokens",
             usageOutputPath: "usage.output_tokens",
+            usageReasoningPath: "",
             maxInputCount: 16,
             genEndpoint: "/v1/images/generations",
             editEndpoint: "/v1/images/edits",
@@ -121,6 +125,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             responseShape: "DataArrayB64Json",
             usageInputPath: "usage.prompt_tokens",
             usageOutputPath: "usage.completion_tokens",
+            usageReasoningPath: "",
             maxInputCount: 0,
             genEndpoint: "/v1/images",
             editEndpoint: "",
@@ -183,6 +188,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             responseShape: "DataArrayB64Json",
             usageInputPath: "",
             usageOutputPath: "",
+            usageReasoningPath: "",
             maxInputCount: 0,
             genEndpoint: "/v1/images/generations",
             editEndpoint: "",
@@ -210,6 +216,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             responseShape: "VertexPredictions",
             usageInputPath: "",
             usageOutputPath: "",
+            usageReasoningPath: "",
             maxInputCount: 1,
             genEndpoint: "",
             editEndpoint: "",
