@@ -9,6 +9,9 @@ public struct ImageModelDef: Sendable, Equatable {
     /// Images llmkit serializes when the wire shape fixes the count
     /// (e.g. Grok's single-seed slot); 0 = no llmkit limit (BUG-011).
     public let maxInputImages: Int
+    /// Whether llmkit sends Image Parts for this model; false means the
+    /// runtime rejects them (BUG-096).
+    public let supportsImageInput: Bool
 }
 
 public struct ImageGenDef: Sendable, Equatable {
@@ -19,7 +22,6 @@ public struct ImageGenDef: Sendable, Equatable {
     public let usageInputPath: String
     public let usageOutputPath: String
     public let usageReasoningPath: String
-    public let maxInputCount: Int
     public let genEndpoint: String
     public let editEndpoint: String
     public let models: [ImageModelDef]
@@ -35,7 +37,6 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageInputPath: "usageMetadata.promptTokenCount",
             usageOutputPath: "usageMetadata.candidatesTokenCount",
             usageReasoningPath: "usageMetadata.thoughtsTokenCount",
-            maxInputCount: 14,
             genEndpoint: "",
             editEndpoint: "",
             models: [
@@ -44,14 +45,16 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     label: "Nano Banana Pro",
                     aspectRatios: ["16:9", "1:1", "21:9", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16"],
                     imageSizes: ["1K", "2K", "4K"],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "gemini-3.1-flash-image-preview",
                     label: "Nano Banana 2",
                     aspectRatios: ["16:9", "1:1", "1:4", "1:8", "21:9", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16"],
                     imageSizes: ["1K", "2K", "4K", "512"],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: true
                 ),
             ]
         )
@@ -63,7 +66,6 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageInputPath: "",
             usageOutputPath: "",
             usageReasoningPath: "",
-            maxInputCount: 16,
             genEndpoint: "/v1/images/generations",
             editEndpoint: "/v1/images/edits",
             models: [
@@ -72,7 +74,8 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     label: "Grok Imagine Quality",
                     aspectRatios: ["16:9", "19.5:9", "1:1", "1:2", "20:9", "2:1", "2:3", "3:2", "3:4", "4:3", "9:16", "9:19.5", "9:20", "auto"],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: true
                 ),
             ]
         )
@@ -84,7 +87,6 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageInputPath: "usage.input_tokens",
             usageOutputPath: "usage.output_tokens",
             usageReasoningPath: "",
-            maxInputCount: 16,
             genEndpoint: "/v1/images/generations",
             editEndpoint: "/v1/images/edits",
             models: [
@@ -93,28 +95,32 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     label: "GPT Image 1",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "gpt-image-1-mini",
                     label: "GPT Image 1 Mini",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "gpt-image-1.5",
                     label: "GPT Image 1.5",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "gpt-image-2",
                     label: "GPT Image 2",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: true
                 ),
             ]
         )
@@ -126,7 +132,6 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageInputPath: "usage.prompt_tokens",
             usageOutputPath: "usage.completion_tokens",
             usageReasoningPath: "",
-            maxInputCount: 0,
             genEndpoint: "/v1/images",
             editEndpoint: "",
             models: [
@@ -135,49 +140,56 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     label: "Nano Banana (Gemini 2.5 Flash Image)",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: false
                 ),
                 ImageModelDef(
                     modelId: "google/gemini-3-pro-image",
                     label: "Nano Banana Pro (Gemini 3 Pro Image)",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: false
                 ),
                 ImageModelDef(
                     modelId: "google/gemini-3.1-flash-image",
                     label: "Nano Banana 2 (Gemini 3.1 Flash Image)",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: false
                 ),
                 ImageModelDef(
                     modelId: "google/gemini-3.1-flash-lite-image",
                     label: "Nano Banana 2 Lite (Gemini 3.1 Flash Lite Image)",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: false
                 ),
                 ImageModelDef(
                     modelId: "openai/gpt-5-image",
                     label: "GPT-5 Image",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: false
                 ),
                 ImageModelDef(
                     modelId: "openai/gpt-5-image-mini",
                     label: "GPT-5 Image Mini",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: false
                 ),
                 ImageModelDef(
                     modelId: "openai/gpt-5.4-image-2",
                     label: "GPT-5.4 Image 2",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: false
                 ),
             ]
         )
@@ -189,7 +201,6 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageInputPath: "",
             usageOutputPath: "",
             usageReasoningPath: "",
-            maxInputCount: 0,
             genEndpoint: "/v1/images/generations",
             editEndpoint: "",
             models: [
@@ -198,14 +209,16 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     label: "Recraft V3",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: false
                 ),
                 ImageModelDef(
                     modelId: "recraftv3_vector",
                     label: "Recraft V3 (vector / SVG)",
                     aspectRatios: [],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 0,
+                    supportsImageInput: false
                 ),
             ]
         )
@@ -217,7 +230,6 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageInputPath: "",
             usageOutputPath: "",
             usageReasoningPath: "",
-            maxInputCount: 1,
             genEndpoint: "",
             editEndpoint: "",
             models: [
@@ -226,21 +238,24 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     label: "Imagen 3 Fast",
                     aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 1,
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "imagen-3.0-generate-002",
                     label: "Imagen 3",
                     aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 1,
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "imagen-4.0-generate-preview-06-06",
                     label: "Imagen 4 Preview",
                     aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
                     imageSizes: [],
-                    maxInputImages: 0
+                    maxInputImages: 1,
+                    supportsImageInput: true
                 ),
             ]
         )

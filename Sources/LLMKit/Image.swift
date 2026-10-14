@@ -158,8 +158,8 @@ public struct Image: Sendable {
     // MARK: - Validation
 
     /// Per-provider pre-flight rejects. Aspect ratio / size are checked against
-    /// the model whitelist (empty = pass-through); reference-image count against
-    /// `maxInputCount`; the OpenAI-only knobs (quality / output_format /
+    /// the model whitelist (empty = pass-through); reference images against the
+    /// model's `supportsImageInput` and `maxInputImages`; the OpenAI-only knobs (quality / output_format /
     /// background / count) are rejected on the wire shapes that do not accept
     /// them. Mirror of `generate_image`'s validation block.
     private func validate(
@@ -172,10 +172,15 @@ public struct Image: Sendable {
             throw LLMKitError.validation(field: "image_size", message: "\(size) not supported by \(model)")
         }
         let imageCount = parts.filter(\.isImage).count
-        if imageCount > imgCfg.maxInputCount {
+        // BUG-096: both limits are llmkit wire facts per model. maxInputImages 0
+        // means no llmkit limit; the provider decides volume.
+        if imageCount > 0, !modelDef.supportsImageInput {
+            throw LLMKitError.validation(field: "parts", message: "\(model) takes no image parts")
+        }
+        if modelDef.maxInputImages > 0, imageCount > modelDef.maxInputImages {
             throw LLMKitError.validation(
                 field: "parts",
-                message: "\(imageCount) image parts exceeds maximum \(imgCfg.maxInputCount) for \(slug)"
+                message: "\(imageCount) image parts exceeds maximum \(modelDef.maxInputImages) for \(model)"
             )
         }
 
