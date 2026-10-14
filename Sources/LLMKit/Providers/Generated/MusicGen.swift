@@ -10,6 +10,8 @@ public struct MusicModelDef: Sendable, Equatable {
     /// ADR-037 advisory facts (queryable, never gated); 0 when unverified.
     public let sampleRateHz: Int
     public let availableOutputFormats: [String]
+    /// Whether llmkit sends Image Parts for this model.
+    public let supportsImageInput: Bool
 }
 
 public struct MusicGenDef: Sendable, Equatable {
@@ -34,7 +36,8 @@ public func musicGenConfig(_ provider: ProviderName) -> MusicGenDef? {
                     maxDurationSeconds: 30,
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    availableOutputFormats: ["audio/mpeg"]
+                    availableOutputFormats: ["audio/mpeg"],
+                    supportsImageInput: false
                 ),
                 MusicModelDef(
                     modelId: "lyria-3-pro-preview",
@@ -43,7 +46,8 @@ public func musicGenConfig(_ provider: ProviderName) -> MusicGenDef? {
                     maxDurationSeconds: 120,
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    availableOutputFormats: ["audio/mpeg"]
+                    availableOutputFormats: ["audio/mpeg"],
+                    supportsImageInput: false
                 ),
             ]
         )
@@ -60,7 +64,8 @@ public func musicGenConfig(_ provider: ProviderName) -> MusicGenDef? {
                     maxDurationSeconds: 0,
                     outputMime: "audio/mpeg",
                     sampleRateHz: 44100,
-                    availableOutputFormats: ["audio/mpeg", "audio/wav"]
+                    availableOutputFormats: ["audio/mpeg", "audio/wav"],
+                    supportsImageInput: false
                 ),
             ]
         )
@@ -77,7 +82,8 @@ public func musicGenConfig(_ provider: ProviderName) -> MusicGenDef? {
                     maxDurationSeconds: 30,
                     outputMime: "audio/wav",
                     sampleRateHz: 48000,
-                    availableOutputFormats: ["audio/wav"]
+                    availableOutputFormats: ["audio/wav"],
+                    supportsImageInput: false
                 ),
             ]
         )
