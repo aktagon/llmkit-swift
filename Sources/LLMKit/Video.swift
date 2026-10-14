@@ -85,7 +85,7 @@ public struct Video: Sendable {
                 field: "model", message: "\(model) is not a known video-generation model for \(config.slug)"
             )
         }
-        try validate(parts: parts, model: model, modelDef: modelDef, vgCfg: vgCfg)
+        let variant = try validate(parts: parts, model: model, modelDef: modelDef, vgCfg: vgCfg, slug: config.slug)
 
         let baseEvent = Event(op: .videoGeneration, provider: provider.rawValue, model: model)
         let start = Date()
@@ -93,7 +93,9 @@ public struct Video: Sendable {
 
         var postEvent = baseEvent
         do {
-            let id = try await dispatchSubmit(config: config, vgCfg: vgCfg, model: model, parts: parts)
+            let id = try await dispatchSubmit(
+                config: config, vgCfg: vgCfg, variant: variant, model: model, parts: parts
+            )
             postEvent.duration = Date().timeIntervalSince(start)
             Middleware.firePost(middleware, postEvent)
             let handle = VideoHandle(id: id, provider: provider, raw: rawOptIn, model: model)
@@ -145,29 +147,38 @@ public struct Video: Sendable {
 
     /// Pre-flight rejects: image-to-video only on `supportsImageToVideo` models
     /// (else the seed frame would silently drop at wire time), and output-uri
-    /// providers require the caller S3 URI (VID-005). Mirror of `submit_video`.
-    private func validate(parts: [VideoPart], model: String, modelDef: VideoModelDef, vgCfg: VideoGenDef) throws {
-        if parts.contains(where: \.isImage), !modelDef.supportsImageToVideo {
+    /// providers require the caller S3 URI (VID-005). Returns the request
+    /// variant the parts select (ADR-096). Mirror of Go's `submitVideo`.
+    private func validate(
+        parts: [VideoPart], model: String, modelDef: VideoModelDef, vgCfg: VideoGenDef, slug: String
+    ) throws -> RequestVariant {
+        let imageCount = parts.filter(\.isImage).count
+        if imageCount > 0, !modelDef.supportsImageToVideo {
             throw LLMKitError.validation(
                 field: "parts",
                 message: "\(model) is a text-to-video-only model and does not accept image parts"
             )
         }
+        // ADR-096: a seed frame selects the WithReferenceImages submit request;
+        // a config with no such variant cannot send it.
+        let variant = try selectRequestVariant(provider: slug, variants: vgCfg.variants, imageCount: imageCount)
         if vgCfg.requiresOutputURI, outputURIValue.isEmpty {
             throw LLMKitError.validation(
                 field: "output_uri",
                 message: "\(providerConfig(provider).slug) requires a caller output S3 URI; set outputURI on the request"
             )
         }
+        return variant
     }
 
     // MARK: - Submit dispatch (selected by wireShape, never provider name)
 
     /// POSTs the submit body per wire shape and returns the provider-assigned
     /// poll handle id (read from the config-declared `submitHandleField` dotted
-    /// path). SigV4 providers (Bedrock) sign the exact bytes.
+    /// path). The submit endpoint is the selected request variant's (ADR-096).
+    /// SigV4 providers (Bedrock) sign the exact bytes.
     private func dispatchSubmit(
-        config: ProviderSpec, vgCfg: VideoGenDef, model: String, parts: [VideoPart]
+        config: ProviderSpec, vgCfg: VideoGenDef, variant: RequestVariant, model: String, parts: [VideoPart]
     ) async throws -> String {
         let base = videoBaseURL(config: config, vgCfg: vgCfg)
         var headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
@@ -228,7 +239,7 @@ public struct Video: Sendable {
         // {model} in the submit endpoint is substituted with the per-call model
         // (Veo's :predictLongRunning path); a no-op for body-model providers.
         let url = appendQueryAuth(
-            base + vgCfg.genEndpoint.replacingOccurrences(of: "{model}", with: model),
+            base + variant.endpoint.replacingOccurrences(of: "{model}", with: model),
             config: config
         )
 
