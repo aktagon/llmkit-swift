@@ -18,7 +18,9 @@ public struct VideoGenDef: Sendable, Equatable {
     public let outputDelivery: String
     /// Video API base when it differs from the chat base; "" = use chat base.
     public let videoBaseURL: String
-    public let genEndpoint: String
+    /// Submit requests per carried input, TextOnly first; each endpoint is
+    /// relative to the resolved video base (ADR-096).
+    public let variants: [RequestVariant]
     /// Poll template with an {id} placeholder.
     public let pollEndpoint: String
     /// File-retrieve template with {file_id} for two-hop providers; "" = single-hop.
@@ -35,7 +37,9 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             wireShape: "VideoBedrock",
             outputDelivery: "DeliveryOutputURI",
             videoBaseURL: "",
-            genEndpoint: "/async-invoke",
+            variants: [
+                RequestVariant(carries: "TextOnly", shape: "", endpoint: "/async-invoke"),
+            ],
             pollEndpoint: "/async-invoke/{id}",
             fileEndpoint: "",
             submitHandleField: "invocationArn",
@@ -57,7 +61,9 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             wireShape: "VideoVeo",
             outputDelivery: "DeliveryDownload",
             videoBaseURL: "",
-            genEndpoint: "/v1beta/models/{model}:predictLongRunning",
+            variants: [
+                RequestVariant(carries: "TextOnly", shape: "", endpoint: "/v1beta/models/{model}:predictLongRunning"),
+            ],
             pollEndpoint: "/v1beta/{id}",
             fileEndpoint: "",
             submitHandleField: "name",
@@ -79,7 +85,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             wireShape: "VideoGrok",
             outputDelivery: "DeliveryURL",
             videoBaseURL: "",
-            genEndpoint: "/v1/videos/generations",
+            variants: [
+                RequestVariant(carries: "TextOnly", shape: "", endpoint: "/v1/videos/generations"),
+                RequestVariant(carries: "WithReferenceImages", shape: "", endpoint: "/v1/videos/generations"),
+            ],
             pollEndpoint: "/v1/videos/{id}",
             fileEndpoint: "",
             submitHandleField: "request_id",
@@ -101,7 +110,9 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             wireShape: "VideoMinimax",
             outputDelivery: "DeliveryURL",
             videoBaseURL: "https://api.minimax.io",
-            genEndpoint: "/v1/video_generation",
+            variants: [
+                RequestVariant(carries: "TextOnly", shape: "", endpoint: "/v1/video_generation"),
+            ],
             pollEndpoint: "/v1/query/video_generation?task_id={id}",
             fileEndpoint: "/v1/files/retrieve?file_id={file_id}",
             submitHandleField: "task_id",
@@ -123,7 +134,9 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             wireShape: "VideoPixVerse",
             outputDelivery: "DeliveryURL",
             videoBaseURL: "",
-            genEndpoint: "/openapi/v2/video/text/generate",
+            variants: [
+                RequestVariant(carries: "TextOnly", shape: "", endpoint: "/openapi/v2/video/text/generate"),
+            ],
             pollEndpoint: "/openapi/v2/video/result/{id}",
             fileEndpoint: "",
             submitHandleField: "Resp.video_id",
@@ -163,7 +176,9 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             wireShape: "VideoQwen",
             outputDelivery: "DeliveryURL",
             videoBaseURL: "https://dashscope-intl.aliyuncs.com",
-            genEndpoint: "/api/v1/services/aigc/video-generation/video-synthesis",
+            variants: [
+                RequestVariant(carries: "TextOnly", shape: "", endpoint: "/api/v1/services/aigc/video-generation/video-synthesis"),
+            ],
             pollEndpoint: "/api/v1/tasks/{id}",
             fileEndpoint: "",
             submitHandleField: "output.task_id",
@@ -185,7 +200,9 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             wireShape: "VideoTogether",
             outputDelivery: "DeliveryURL",
             videoBaseURL: "",
-            genEndpoint: "/v2/videos",
+            variants: [
+                RequestVariant(carries: "TextOnly", shape: "", endpoint: "/v2/videos"),
+            ],
             pollEndpoint: "/v2/videos/{id}",
             fileEndpoint: "",
             submitHandleField: "id",
@@ -207,7 +224,9 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             wireShape: "VideoVertexVeo",
             outputDelivery: "DeliveryDownload",
             videoBaseURL: "",
-            genEndpoint: "/{model}:predictLongRunning",
+            variants: [
+                RequestVariant(carries: "TextOnly", shape: "", endpoint: "/{model}:predictLongRunning"),
+            ],
             pollEndpoint: "/{model}:fetchPredictOperation",
             fileEndpoint: "",
             submitHandleField: "name",
@@ -229,7 +248,9 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             wireShape: "VideoVidu",
             outputDelivery: "DeliveryURL",
             videoBaseURL: "",
-            genEndpoint: "/ent/v2/text2video",
+            variants: [
+                RequestVariant(carries: "TextOnly", shape: "", endpoint: "/ent/v2/text2video"),
+            ],
             pollEndpoint: "/ent/v2/tasks/{id}/creations",
             fileEndpoint: "",
             submitHandleField: "task_id",
@@ -269,7 +290,9 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             wireShape: "VideoZhipu",
             outputDelivery: "DeliveryURL",
             videoBaseURL: "",
-            genEndpoint: "/v4/videos/generations",
+            variants: [
+                RequestVariant(carries: "TextOnly", shape: "", endpoint: "/v4/videos/generations"),
+            ],
             pollEndpoint: "/v4/async-result/{id}",
             fileEndpoint: "",
             submitHandleField: "id",
