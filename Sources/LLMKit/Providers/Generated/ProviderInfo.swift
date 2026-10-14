@@ -140,7 +140,7 @@ public func providerInfo(_ provider: ProviderName) -> ProviderInfo {
             id: .groq,
             slug: "groq",
             envVar: "GROQ_API_KEY",
-            defaultModel: "llama-3.3-70b-versatile",
+            defaultModel: "openai/gpt-oss-120b",
             baseURL: "https://api.groq.com/openai",
             browserCallable: false
         )
@@ -203,7 +203,7 @@ public func providerInfo(_ provider: ProviderName) -> ProviderInfo {
             id: .moonshot,
             slug: "moonshot",
             envVar: "MOONSHOT_API_KEY",
-            defaultModel: "moonshot-v1-8k",
+            defaultModel: "kimi-k2.6",
             baseURL: "https://api.moonshot.ai",
             browserCallable: false
         )
