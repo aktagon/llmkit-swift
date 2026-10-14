@@ -620,6 +620,6 @@ struct ImageOptions: Sendable {
     var safetySettings: [SafetySetting] = []
     /// Opt into `ImageResponse.raw` (the parsed provider body, ADR-014).
     var raw: Bool = false
-    /// Inpainting mask: OpenAI's edits form and Vertex Imagen only.
+    /// Inpainting mask: OpenAI's multipart edits request only (ADR-096).
     var mask: MediaRef?
 }
