@@ -6,7 +6,8 @@ import Foundation
 /// `ImageResponse`.
 ///
 /// The generated `imageGenConfig(provider)` fact selects both the request body
-/// shape (`inputMode`) and the response parser (`responseShape`) — never the
+/// variants (ADR-096: one per carried input, each naming its request shape and
+/// endpoint) and the response parser (`responseShape`) — never the
 /// provider name (BUG-024). Pre-flight validation rejects unsupported aspect
 /// ratios / sizes / reference-image counts before any HTTP call.
 ///
@@ -96,7 +97,7 @@ public struct Image: Sendable {
         guard let modelDef = imgCfg.models.first(where: { $0.modelId == model }) else {
             throw LLMKitError.validation(field: "model", message: "\(model) is not a known image-generation model for \(config.slug)")
         }
-        try validate(parts: parts, model: model, modelDef: modelDef, imgCfg: imgCfg, slug: config.slug)
+        let variant = try validate(parts: parts, model: model, modelDef: modelDef, imgCfg: imgCfg, slug: config.slug)
 
         let baseEvent = Event(op: .imageGeneration, provider: provider.rawValue, model: model)
         let start = Date()
@@ -104,7 +105,9 @@ public struct Image: Sendable {
 
         var postEvent = baseEvent
         do {
-            let response = try await send(parts: parts, model: model, imgCfg: imgCfg, config: config)
+            let response = try await send(
+                parts: parts, model: model, variant: variant, imgCfg: imgCfg, config: config
+            )
             postEvent.duration = Date().timeIntervalSince(start)
             postEvent.usage = response.usage
             Middleware.firePost(options.middleware, postEvent)
@@ -160,11 +163,12 @@ public struct Image: Sendable {
     /// Per-provider pre-flight rejects. Aspect ratio / size are checked against
     /// the model whitelist (empty = pass-through); reference images against the
     /// model's `supportsImageInput` and `maxInputImages`; the OpenAI-only knobs (quality / output_format /
-    /// background / count) are rejected on the wire shapes that do not accept
-    /// them. Mirror of `generate_image`'s validation block.
+    /// background / count) are rejected on the request shapes that do not accept
+    /// them. Returns the request variant the parts select (ADR-096). Mirror of
+    /// Go's `generateImage` validation block.
     private func validate(
         parts: [ImagePart], model: String, modelDef: ImageModelDef, imgCfg: ImageGenDef, slug: String
-    ) throws {
+    ) throws -> RequestVariant {
         if let ratio = options.aspectRatio, !modelDef.aspectRatios.isEmpty, !modelDef.aspectRatios.contains(ratio) {
             throw LLMKitError.validation(field: "aspect_ratio", message: "\(ratio) not supported by \(model)")
         }
@@ -172,28 +176,30 @@ public struct Image: Sendable {
             throw LLMKitError.validation(field: "image_size", message: "\(size) not supported by \(model)")
         }
         let imageCount = parts.filter(\.isImage).count
-        // BUG-096: both limits are llmkit wire facts per model. maxInputImages 0
-        // means no llmkit limit; the provider decides volume.
-        if imageCount > 0, !modelDef.supportsImageInput {
-            throw LLMKitError.validation(field: "parts", message: "\(model) takes no image parts")
-        }
-        if modelDef.maxInputImages > 0, imageCount > modelDef.maxInputImages {
-            throw LLMKitError.validation(
-                field: "parts",
-                message: "\(imageCount) image parts exceeds maximum \(modelDef.maxInputImages) for \(model)"
-            )
-        }
+        try Self.validateImageArity(modelDef, imageCount)
 
-        // Per-provider knob validation. Quality / output_format / background are
-        // OpenAI-only on the wire; count (n) is OpenAI + Recraft + xAI. Recraft
-        // additionally has no aspect_ratio wire field (it sizes by WxH).
-        switch imgCfg.inputMode {
-        case "InlineParts":
+        // ADR-096: the request's parts pick the wire request; a config with no
+        // variant for those inputs cannot send it.
+        let variant = try selectRequestVariant(provider: slug, variants: imgCfg.variants, imageCount: imageCount)
+
+        // Per-request-shape knob validation. Quality / output_format / background
+        // are OpenAI-only on the wire; count (n) is OpenAI + Recraft + xAI +
+        // Vertex. Recraft additionally has no aspect_ratio wire field (it sizes
+        // by WxH). A mask rides only the OpenAI multipart edits body.
+        if options.mask != nil, variant.shape != ImageRequestShape.multipartForm {
+            if variant.shape == ImageRequestShape.jsonGenerationsOpenAI {
+                throw LLMKitError.validation(
+                    field: "mask", message: "requires at least one image part (edits branch only)"
+                )
+            }
+            throw LLMKitError.validation(field: "mask", message: "not supported by \(slug)")
+        }
+        switch variant.shape {
+        case ImageRequestShape.inlineParts:
             try reject(options.quality, "quality", slug)
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
             try reject(options.count.map { String($0) }, "count", slug)
-            try rejectMask(slug)
             // Google takes safetySettings (wired in buildGoogleBody) but has no
             // single-threshold safetyFilter knob — that is Vertex Imagen's.
             if options.safetyFilter != nil {
@@ -202,14 +208,13 @@ public struct Image: Sendable {
                     message: "not supported by \(slug); use safety_settings"
                 )
             }
-        case "JSONInlineRefs":
+        case ImageRequestShape.jsonInlineRefs:
             try reject(options.quality, "quality", slug)
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
-            try rejectMask(slug)
             try reject(options.safetyFilter, "safety_filter", slug)
             try rejectSafetySettings(slug)
-        case "JSONPredict":
+        case ImageRequestShape.jsonPredict:
             try reject(options.quality, "quality", slug)
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
@@ -221,7 +226,7 @@ public struct Image: Sendable {
                     message: "not supported by \(slug); use safety_filter for Vertex Imagen"
                 )
             }
-        case "JSONGenerations":
+        case ImageRequestShape.jsonGenerations:
             if options.aspectRatio != nil {
                 throw LLMKitError.validation(
                     field: "aspect_ratio",
@@ -231,26 +236,31 @@ public struct Image: Sendable {
             try reject(options.quality, "quality", slug)
             try reject(options.outputFormat, "output_format", slug)
             try reject(options.background, "background", slug)
-            try rejectMask(slug)
+            try reject(options.safetyFilter, "safety_filter", slug)
+            try rejectSafetySettings(slug)
+        case ImageRequestShape.jsonGenerationsOpenAI, ImageRequestShape.multipartForm:
+            // OpenAI: quality / output_format / background / count are all
+            // valid on both requests; neither safety knob is.
             try reject(options.safetyFilter, "safety_filter", slug)
             try rejectSafetySettings(slug)
         default:
-            // MultipartForm (OpenAI): quality / output_format / background /
-            // count are all valid; neither safety knob is. A mask rides only
-            // the edits form, which needs at least one reference image.
-            if options.mask != nil, imageCount == 0 {
-                throw LLMKitError.validation(
-                    field: "mask", message: "requires at least one image part (edits branch only)"
-                )
-            }
-            try reject(options.safetyFilter, "safety_filter", slug)
-            try rejectSafetySettings(slug)
+            throw LLMKitError.unsupported("image generation: unknown request shape \"\(variant.shape)\"")
         }
+        return variant
     }
 
-    private func rejectMask(_ slug: String) throws {
-        if options.mask != nil {
-            throw LLMKitError.validation(field: "mask", message: "not supported by \(slug)")
+    /// Reject image parts the model does not take. BUG-096: both limits are
+    /// llmkit wire facts per model. maxInputImages 0 means no llmkit limit; the
+    /// provider decides volume.
+    static func validateImageArity(_ modelDef: ImageModelDef, _ imageCount: Int) throws {
+        if imageCount > 0, !modelDef.supportsImageInput {
+            throw LLMKitError.validation(field: "parts", message: "\(modelDef.modelId) takes no image parts")
+        }
+        if modelDef.maxInputImages > 0, imageCount > modelDef.maxInputImages {
+            throw LLMKitError.validation(
+                field: "parts",
+                message: "\(imageCount) image parts exceeds maximum \(modelDef.maxInputImages) for \(modelDef.modelId)"
+            )
         }
     }
 
@@ -268,45 +278,40 @@ public struct Image: Sendable {
 
     // MARK: - Send
 
+    /// Send the request variant the parts selected (ADR-096), switching on its
+    /// request shape, never on provider name. The URL is the base plus the
+    /// variant's endpoint, or the provider's main endpoint template (with
+    /// {model} substituted) when the endpoint is empty.
     private func send(
-        parts: [ImagePart], model: String, imgCfg: ImageGenDef, config: ProviderSpec
+        parts: [ImagePart], model: String, variant: RequestVariant, imgCfg: ImageGenDef, config: ProviderSpec
     ) async throws -> ImageResponse {
-        let base = baseURLOverride ?? config.baseURL
         let headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
-        let hasImages = parts.contains(where: \.isImage)
+        let url = variant.endpoint.isEmpty
+            ? RequestBuilder.buildURL(
+                config: config, endpoint: config.endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
+            )
+            : (baseURLOverride ?? config.baseURL) + variant.endpoint
 
-        if imgCfg.inputMode == "MultipartForm", hasImages {
+        let body: JSONValue
+        switch variant.shape {
+        case ImageRequestShape.multipartForm:
             let (fields, files) = buildOpenAIEditForm(parts, model)
             let (statusCode, data) = try await http.postMultipart(
-                url: base + imgCfg.editEndpoint, fields: fields, files: files, headers: headers
+                url: url, fields: fields, files: files, headers: headers
             )
             return try decode(statusCode, data, imgCfg: imgCfg, config: config)
-        }
-
-        let url: String
-        let body: JSONValue
-        switch imgCfg.inputMode {
-        case "JSONInlineRefs":
-            body = .object(hasImages ? buildXAIEditBody(parts, model) : buildXAIGenBody(parts, model))
-            url = base + (hasImages ? imgCfg.editEndpoint : imgCfg.genEndpoint)
-        case "JSONGenerations":
-            body = buildRecraftBody(parts, model)
-            url = base + imgCfg.genEndpoint
-        case "MultipartForm": // generations; the edits form returned above
+        case ImageRequestShape.jsonGenerationsOpenAI:
             body = buildOpenAIBody(parts, model)
-            url = base + imgCfg.genEndpoint
-        case "JSONPredict":
+        case ImageRequestShape.jsonInlineRefs:
+            body = .object(buildXAIBody(parts, model))
+        case ImageRequestShape.jsonPredict:
             body = buildVertexBody(parts)
-            url = RequestBuilder.buildURL(
-                config: config, endpoint: config.endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
-            )
-        case "InlineParts": // Google generateContent
+        case ImageRequestShape.jsonGenerations:
+            body = buildRecraftBody(parts, model)
+        case ImageRequestShape.inlineParts: // Google generateContent
             body = buildGoogleBody(parts)
-            url = RequestBuilder.buildURL(
-                config: config, endpoint: config.endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
-            )
         default:
-            throw LLMKitError.unsupported("image generation: unknown input mode \"\(imgCfg.inputMode)\"")
+            throw LLMKitError.unsupported("image generation: unknown request shape \"\(variant.shape)\"")
         }
 
         let (statusCode, data) = try await http.postJSON(url: url, body: body, headers: headers)
@@ -437,10 +442,12 @@ public struct Image: Sendable {
         return .object(body)
     }
 
-    /// xAI Grok `/v1/images/generations` JSON body pairs. `image_size` maps to
+    /// xAI Grok body pairs for `/v1/images/generations` (text only) and
+    /// `/v1/images/edits` (with reference images). `image_size` maps to
     /// `resolution` (xAI's name); `response_format=b64_json` is forced (xAI
-    /// defaults to URL). Returns the pair array so the edit body can extend it.
-    private func buildXAIGenBody(_ parts: [ImagePart], _ model: String) -> [(String, JSONValue)] {
+    /// defaults to URL). One reference image maps to `image: {url: "data:..."}`,
+    /// several to `images: [...]` in caller order, none to no image field.
+    private func buildXAIBody(_ parts: [ImagePart], _ model: String) -> [(String, JSONValue)] {
         var body: [(String, JSONValue)] = [
             ("model", .string(model)),
             ("prompt", .string(joinText(parts))),
@@ -449,13 +456,6 @@ public struct Image: Sendable {
         if let ratio = options.aspectRatio { body.append(("aspect_ratio", .string(ratio))) }
         if let size = options.imageSize { body.append(("resolution", .string(size))) }
         if let count = options.count { body.append(("n", .int(Int64(count)))) }
-        return body
-    }
-
-    /// xAI Grok `/v1/images/edits` body pairs: one reference image maps to
-    /// `image: {url: "data:..."}`, multiple to `images: [...]` in caller order.
-    private func buildXAIEditBody(_ parts: [ImagePart], _ model: String) -> [(String, JSONValue)] {
-        var body = buildXAIGenBody(parts, model)
         let refs: [JSONValue] = parts.compactMap { part in
             guard case let .image(media) = part else { return nil }
             let mime = media.mimeType.isEmpty ? "image/png" : media.mimeType
@@ -471,23 +471,12 @@ public struct Image: Sendable {
     }
 
     /// Vertex AI Imagen `:predict` body: an `instances`/`parameters` envelope.
-    /// The instance carries the prompt and (for editing) a single reference
-    /// image; parameters carries `sampleCount` + optional `aspectRatio`.
+    /// The instance carries the prompt; parameters carries `sampleCount` +
+    /// optional `aspectRatio`. The Imagen generate models take text only
+    /// (BUG-101), so image parts never reach here: the supportsImageInput gate
+    /// rejects them first.
     private func buildVertexBody(_ parts: [ImagePart]) -> JSONValue {
-        var instance: [(String, JSONValue)] = [("prompt", .string(joinText(parts)))]
-        for part in parts {
-            if case let .image(media) = part {
-                instance.append(("image", .object([
-                    ("bytesBase64Encoded", .string(Data(media.bytes).base64EncodedString())),
-                ])))
-                break // Vertex Imagen takes a single edit-target image
-            }
-        }
-        if let mask = options.mask {
-            instance.append(("mask", .object([("image", .object([
-                ("bytesBase64Encoded", .string(Data(mask.bytes).base64EncodedString())),
-            ]))])))
-        }
+        let instance: [(String, JSONValue)] = [("prompt", .string(joinText(parts)))]
         var parameters: [(String, JSONValue)] = [("sampleCount", .int(Int64(options.count ?? 1)))]
         if let ratio = options.aspectRatio { parameters.append(("aspectRatio", .string(ratio))) }
         if let filter = options.safetyFilter { parameters.append(("safetySetting", .string(filter))) }
