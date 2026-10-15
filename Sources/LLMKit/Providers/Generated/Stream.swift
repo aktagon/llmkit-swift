@@ -456,3 +456,34 @@ func streamConfig(_ provider: ProviderName) -> StreamDef? {
     default: return nil
     }
 }
+
+/// The streaming config a chat wire shape declares for every provider that
+/// selects it, or nil when the provider's `streamConfig` holds.
+func wireShapeStreamConfig(_ chatWireShape: String) -> StreamDef? {
+    switch chatWireShape {
+    case "ChatResponsesOpenAI":
+        return StreamDef(
+            endpoint: "",
+            param: "stream",
+            paramValue: "true",
+            deltaTextPath: "delta",
+            doneSignal: "",
+            usesEventTypes: true,
+            contentEvent: "response.output_text.delta",
+            doneEvent: "",
+            usageEvent: "response.completed",
+            usageInputPath: "response.usage.input_tokens",
+            usageOutputPath: "response.usage.output_tokens",
+            usageOptIn: false
+        )
+    default: return nil
+    }
+}
+
+/// The ADR-013 stream finish locator read with `wireShapeStreamConfig`.
+func wireShapeStreamFinishReasonPath(_ chatWireShape: String) -> String {
+    switch chatWireShape {
+    case "ChatResponsesOpenAI": return "response.completed:response.status"
+    default: return ""
+    }
+}
