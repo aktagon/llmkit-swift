@@ -63,6 +63,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             videoBaseURL: "",
             variants: [
                 RequestVariant(carries: "TextOnly", shape: "", endpoint: "/v1beta/models/{model}:predictLongRunning"),
+                RequestVariant(carries: "WithSeedFrame", shape: "", endpoint: "/v1beta/models/{model}:predictLongRunning"),
             ],
             pollEndpoint: "/v1beta/{id}",
             fileEndpoint: "",
@@ -70,13 +71,31 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             requiresOutputURI: false,
             models: [
                 VideoModelDef(
+                    modelId: "veo-3.1-fast-generate-preview",
+                    label: "Veo 3.1 Fast",
+                    supportsImageToVideo: true,
+                    maxDurationSeconds: 8,
+                    outputMime: "video/mp4",
+                    resolutions: ["1080p", "4k", "720p"],
+                    maxInputImages: 1
+                ),
+                VideoModelDef(
                     modelId: "veo-3.1-generate-preview",
                     label: "Veo 3.1",
-                    supportsImageToVideo: false,
+                    supportsImageToVideo: true,
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
-                    maxInputImages: 0
+                    maxInputImages: 1
+                ),
+                VideoModelDef(
+                    modelId: "veo-3.1-lite-generate-preview",
+                    label: "Veo 3.1 Lite",
+                    supportsImageToVideo: true,
+                    maxDurationSeconds: 8,
+                    outputMime: "video/mp4",
+                    resolutions: ["1080p", "720p"],
+                    maxInputImages: 1
                 ),
             ]
         )
@@ -87,7 +106,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             videoBaseURL: "",
             variants: [
                 RequestVariant(carries: "TextOnly", shape: "", endpoint: "/v1/videos/generations"),
-                RequestVariant(carries: "WithReferenceImages", shape: "", endpoint: "/v1/videos/generations"),
+                RequestVariant(carries: "WithSeedFrame", shape: "", endpoint: "/v1/videos/generations"),
             ],
             pollEndpoint: "/v1/videos/{id}",
             fileEndpoint: "",
@@ -226,6 +245,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             videoBaseURL: "",
             variants: [
                 RequestVariant(carries: "TextOnly", shape: "", endpoint: "/{model}:predictLongRunning"),
+                RequestVariant(carries: "WithSeedFrame", shape: "", endpoint: "/{model}:predictLongRunning"),
             ],
             pollEndpoint: "/{model}:fetchPredictOperation",
             fileEndpoint: "",
@@ -233,17 +253,35 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             requiresOutputURI: false,
             models: [
                 VideoModelDef(
+                    modelId: "veo-3.1-fast-generate-001",
+                    label: "Veo 3.1 Fast",
+                    supportsImageToVideo: true,
+                    maxDurationSeconds: 8,
+                    outputMime: "video/mp4",
+                    resolutions: ["1080p", "720p"],
+                    maxInputImages: 1
+                ),
+                VideoModelDef(
                     modelId: "veo-3.1-generate-001",
                     label: "Veo 3.1",
-                    supportsImageToVideo: false,
+                    supportsImageToVideo: true,
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "4k", "720p"],
-                    maxInputImages: 0
+                    maxInputImages: 1
                 ),
                 VideoModelDef(
                     modelId: "veo-3.1-generate-preview",
                     label: "Veo 3.1",
+                    supportsImageToVideo: true,
+                    maxDurationSeconds: 8,
+                    outputMime: "video/mp4",
+                    resolutions: ["1080p", "720p"],
+                    maxInputImages: 1
+                ),
+                VideoModelDef(
+                    modelId: "veo-3.1-lite-generate-001",
+                    label: "Veo 3.1 Lite",
                     supportsImageToVideo: false,
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",

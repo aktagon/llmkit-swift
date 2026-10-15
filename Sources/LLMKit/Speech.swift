@@ -10,10 +10,11 @@ import Foundation
 /// provider name. Two shapes ship: `SpeechInworld` (a flat-JSON POST whose reply
 /// carries base64 audio at `audioContent`) and `SpeechOpenAI` (a flat-JSON POST
 /// whose reply is RAW audio bytes — never JSON, so the response is read as bytes
-/// and taken verbatim). Pre-flight validation (model + text + voice required;
-/// provider supports speech; model + voice in catalogue) runs before any HTTP
-/// call. Fires the `speechGeneration` middleware op around the request
-/// (BUG-036).
+/// and taken verbatim). Pre-flight validation (model + text or lines required;
+/// voice or speakers; provider supports speech; model known; speakers and
+/// style the model takes, BUG-091) runs before any HTTP call. Voices are
+/// free-form: there is no catalogue. Fires the `speechGeneration` middleware
+/// op around the request (BUG-036).
 public struct Speech: Sendable {
     let provider: ProviderName
     let apiKey: String
@@ -21,6 +22,9 @@ public struct Speech: Sendable {
     let http: HTTPClient
     var modelOverride: String?
     var voiceOverride: String?
+    var style: String = ""
+    var speakers: [(name: String, voice: String)] = []
+    var lines: [(speaker: String, style: String, text: String)] = []
     var middleware: [MiddlewareFn] = []
 
     init(provider: ProviderName, apiKey: String, baseURLOverride: String?, http: HTTPClient) {
@@ -33,9 +37,31 @@ public struct Speech: Sendable {
     /// Select the speech-generation model (required).
     public func model(_ model: String) -> Speech { with { $0.modelOverride = model } }
 
-    /// Select the voice — request-data selector validated pre-flight against the
-    /// provider's catalogue (SPK-004).
+    /// Select the voice — a free-form voice id, sent as given (SPK-004; no
+    /// catalogue since 2026-10-15).
     public func voice(_ voice: String) -> Speech { with { $0.voiceOverride = voice } }
+
+    /// Sets the delivery style for a single-voice speech request, such as
+    /// "cheerful". A model that does not take a style rejects it before send.
+    public func style(_ style: String) -> Speech { with { $0.style = style } }
+
+    /// Declares a named speaker and its voice for a multi-speaker speech
+    /// request. Declare exactly 2 speakers, and do not set a voice with them.
+    public func addSpeaker(_ name: String, _ voice: String) -> Speech {
+        with { $0.speakers.append((name: name, voice: voice)) }
+    }
+
+    /// Appends a line said by a declared speaker. Lines are spoken in call
+    /// order. When lines are set, the text passed to generate must be empty.
+    public func addLine(_ speaker: String, _ text: String) -> Speech {
+        with { $0.lines.append((speaker: speaker, style: "", text: text)) }
+    }
+
+    /// Appends a line said by a declared speaker in a delivery style, such as
+    /// "calm and relaxed". Otherwise it works like addLine.
+    public func addStyledLine(_ speaker: String, _ style: String, _ text: String) -> Speech {
+        with { $0.lines.append((speaker: speaker, style: style, text: text)) }
+    }
 
     /// Register a middleware hook (observation + pre-phase veto).
     public func addMiddleware(_ hook: @escaping MiddlewareFn) -> Speech {
@@ -53,12 +79,8 @@ public struct Speech: Sendable {
         guard let model = modelOverride, !model.isEmpty else {
             throw LLMKitError.validation(field: "model", message: "required for speech generation")
         }
-        guard !text.isEmpty else {
-            throw LLMKitError.validation(field: "text", message: "required for speech generation")
-        }
-        guard let voice = voiceOverride, !voice.isEmpty else {
-            throw LLMKitError.validation(field: "voice", message: "required for speech generation")
-        }
+        let voice = voiceOverride ?? ""
+        try validateInputs(voice: voice, text: text)
 
         let config = providerConfig(provider)
         guard let sgCfg = speechGenConfig(provider) else {
@@ -69,9 +91,7 @@ public struct Speech: Sendable {
                 field: "model", message: "\(model) is not a known speech-generation model for \(config.slug)"
             )
         }
-        guard sgCfg.voices.contains(voice) else {
-            throw LLMKitError.validation(field: "voice", message: "\(voice) is not a known voice for \(config.slug)")
-        }
+        try validateModel(modelDef)
 
         let baseEvent = Event(op: .speechGeneration, provider: provider.rawValue, model: model)
         let start = Date()
@@ -82,13 +102,21 @@ public struct Speech: Sendable {
             var headers = RequestBuilder.buildAuthHeaders(config: config, apiKey: apiKey)
             headers.append(("content-type", "application/json"))
 
-            let base = baseURLOverride ?? config.baseURL
             let endpoint = sgCfg.genEndpoint.isEmpty ? config.endpoint : sgCfg.genEndpoint
-            let url = endpoint.hasPrefix("http") ? endpoint : base + endpoint
+            // buildURL appends the QueryParamKey `?key=` for Google, as on every
+            // other Google call.
+            let url = endpoint.hasPrefix("http")
+                ? endpoint
+                : RequestBuilder.buildURL(
+                    config: config, endpoint: endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
+                )
 
-            let body = sgCfg.wireShape == "SpeechOpenAI"
-                ? buildOpenAIBody(model: model, voice: voice, text: text)
-                : buildInworldBody(model: model, voice: voice, text: text)
+            let body: JSONValue
+            switch sgCfg.wireShape {
+            case "SpeechOpenAI": body = buildOpenAIBody(model: model, voice: voice, text: text, style: style)
+            case "SpeechGemini": body = buildGeminiBody(model: model, voice: voice, text: text)
+            default: body = buildInworldBody(model: model, voice: voice, text: text)
+            }
 
             // The OpenAI shape returns binary audio (not JSON), so the reply is
             // read as raw bytes and must not be lossily UTF-8 decoded before the
@@ -112,6 +140,55 @@ public struct Speech: Sendable {
             Middleware.setError(&postEvent, error)
             Middleware.firePost(middleware, postEvent)
             throw error
+        }
+    }
+
+    /// Checks the request on its own, before the provider config is read
+    /// (BUG-091). The messages are the same in every SDK.
+    private func validateInputs(voice: String, text: String) throws {
+        if lines.isEmpty && text.isEmpty {
+            throw LLMKitError.validation(field: "text", message: "required for speech generation")
+        }
+        if !lines.isEmpty && !text.isEmpty {
+            throw LLMKitError.validation(field: "text", message: "must be empty when lines are set")
+        }
+        if speakers.isEmpty {
+            if voice.isEmpty {
+                throw LLMKitError.validation(field: "voice", message: "required for speech generation")
+            }
+        } else {
+            if !voice.isEmpty {
+                throw LLMKitError.validation(field: "voice", message: "cannot be set together with speakers")
+            }
+            if !style.isEmpty {
+                throw LLMKitError.validation(
+                    field: "style", message: "cannot be set together with speakers; style each line instead")
+            }
+            if lines.isEmpty {
+                throw LLMKitError.validation(field: "lines", message: "required when speakers are set")
+            }
+        }
+        for line in lines where !speakers.contains(where: { $0.name == line.speaker }) {
+            throw LLMKitError.validation(field: "lines", message: "\(line.speaker) is not a declared speaker")
+        }
+    }
+
+    /// Checks the request against the model's speaker and style facts (BUG-091).
+    private func validateModel(_ model: SpeechModelDef) throws {
+        if !speakers.isEmpty {
+            if model.maxSpeakers == 0 {
+                throw LLMKitError.validation(
+                    field: "speakers", message: "\(model.modelId) does not support multiple speakers")
+            }
+            if speakers.count != model.maxSpeakers {
+                throw LLMKitError.validation(
+                    field: "speakers",
+                    message: "exactly \(model.maxSpeakers) speakers are required, got \(speakers.count)")
+            }
+        }
+        let styled = !style.isEmpty || lines.contains(where: { !$0.style.isEmpty })
+        if styled && !model.supportsSpeechStyle {
+            throw LLMKitError.validation(field: "style", message: "\(model.modelId) does not support a speech style")
         }
     }
 
@@ -141,13 +218,61 @@ public struct Speech: Sendable {
     }
 
     /// OpenAI `/v1/audio/speech` body. Slice 1 fixes response_format=mp3 (KISS);
-    /// format selection is a later slice (ADR-051).
-    private func buildOpenAIBody(model: String, voice: String, text: String) -> JSONValue {
-        .object([
+    /// format selection is a later slice (ADR-051). A style is sent as
+    /// `instructions` (BUG-091), which gpt-4o-mini-tts accepts.
+    private func buildOpenAIBody(model: String, voice: String, text: String, style: String) -> JSONValue {
+        var fields: [(String, JSONValue)] = [
             ("model", .string(model)),
             ("input", .string(text)),
             ("voice", .string(voice)),
             ("response_format", .string("mp3")),
+        ]
+        if !style.isEmpty { fields.append(("instructions", .string(style))) }
+        return .object(fields)
+    }
+
+    /// Gemini TTS body on the Interactions API (BUG-091): one user_input turn
+    /// and an audio response. Single voice: one text item and
+    /// `speech_config [{voice}]`; a style annotates the text item.
+    /// Multi-speaker: one text item per line, each annotated with its speaker
+    /// and optional style, and `speech_config {speakers}`. `store` is always
+    /// false: the Interactions API keeps requests by default.
+    private func buildGeminiBody(model: String, voice: String, text: String) -> JSONValue {
+        var content: [JSONValue] = []
+        let speechConfig: JSONValue
+        if speakers.isEmpty {
+            var item: [(String, JSONValue)] = [("type", .string("text")), ("text", .string(text))]
+            if !style.isEmpty {
+                item.append(("annotations", .array([.object([
+                    ("type", .string("speech_metadata")), ("style", .string(style)),
+                ])])))
+            }
+            content.append(.object(item))
+            speechConfig = .array([.object([("voice", .string(voice))])])
+        } else {
+            for line in lines {
+                var meta: [(String, JSONValue)] = [
+                    ("type", .string("speech_metadata")), ("speaker", .string(line.speaker)),
+                ]
+                if !line.style.isEmpty { meta.append(("style", .string(line.style))) }
+                content.append(.object([
+                    ("type", .string("text")), ("text", .string(line.text)),
+                    ("annotations", .array([.object(meta)])),
+                ]))
+            }
+            speechConfig = .object([("speakers", .array(speakers.map {
+                .object([("speaker", .string($0.name)), ("voice", .string($0.voice))])
+            }))])
+        }
+        return .object([
+            ("model", .string(model)),
+            ("input", .array([.object([
+                ("type", .string("user_input")),
+                ("content", .array(content)),
+            ])])),
+            ("response_format", .object([("type", .string("audio"))])),
+            ("generation_config", .object([("speech_config", speechConfig)])),
+            ("store", .bool(false)),
         ])
     }
 
@@ -163,8 +288,11 @@ public struct Speech: Sendable {
         provider: String, encoding: String, fallbackMime: String, body: Data
     ) throws -> SpeechResponse {
         var bytes: [UInt8] = []
+        var mime = fallbackMime
         if encoding == "rawBody" {
             bytes = [UInt8](body)
+        } else if encoding == "base64InteractionSteps" {
+            (bytes, mime) = try parseInteractionSteps(provider: provider, fallbackMime: fallbackMime, body: body)
         } else {
             let raw: JSONValue
             do {
@@ -181,9 +309,45 @@ public struct Speech: Sendable {
             bytes = [UInt8](decoded)
         }
         return SpeechResponse(
-            audio: AudioData(mimeType: fallbackMime, bytes: bytes),
+            audio: AudioData(mimeType: mime, bytes: bytes),
             usage: Usage(),
             finishReason: nil
         )
+    }
+
+    /// Decode a Gemini TTS Interactions API reply (BUG-091). Google's documented
+    /// path is
+    /// `[.steps[] | select(.type=="model_output") | .content[] | select(.type=="audio")] | last | .data`:
+    /// the LAST audio item across the model_output steps wins. Its `mime_type`
+    /// is used when present, else the model's outputMime. No audio item, or
+    /// invalid base64, is a decoding error (HANDOFF-036 A5).
+    private func parseInteractionSteps(
+        provider: String, fallbackMime: String, body: Data
+    ) throws -> ([UInt8], String) {
+        let raw: JSONValue
+        do {
+            raw = try JSONValue.parse(String(decoding: body, as: UTF8.self))
+        } catch {
+            throw LLMKitError.decoding("\(provider) speech response: not valid JSON: \(error)")
+        }
+        var last: JSONValue?
+        if case let .array(steps)? = raw.member("steps") {
+            for step in steps {
+                guard case .string("model_output")? = step.member("type"),
+                      case let .array(content)? = step.member("content") else { continue }
+                for item in content {
+                    if case .string("audio")? = item.member("type") { last = item }
+                }
+            }
+        }
+        guard case let .string(b64)? = last?.member("data"), !b64.isEmpty else {
+            throw LLMKitError.decoding("\(provider) speech response: no audio item in steps[model_output].content")
+        }
+        guard let decoded = Data(base64Encoded: b64) else {
+            throw LLMKitError.decoding("\(provider) speech response: invalid base64 in audio data")
+        }
+        var mime = fallbackMime
+        if case let .string(m)? = last?.member("mime_type"), !m.isEmpty { mime = m }
+        return ([UInt8](decoded), mime)
     }
 }

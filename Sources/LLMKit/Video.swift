@@ -159,9 +159,11 @@ public struct Video: Sendable {
                 message: "\(model) is a text-to-video-only model and does not accept image parts"
             )
         }
-        // ADR-096: a seed frame selects the WithReferenceImages submit request;
+        // ADR-096: a seed frame selects the WithSeedFrame submit request;
         // a config with no such variant cannot send it.
-        let variant = try selectRequestVariant(provider: slug, variants: vgCfg.variants, imageCount: imageCount)
+        let variant = try selectRequestVariant(
+            provider: slug, variants: vgCfg.variants, imageCount: imageCount,
+            imageCarries: CarriedInput.withSeedFrame)
         if vgCfg.requiresOutputURI, outputURIValue.isEmpty {
             throw LLMKitError.validation(
                 field: "output_uri",
@@ -208,7 +210,17 @@ public struct Video: Sendable {
         case "VideoVeo", "VideoVertexVeo":
             // Veo / Vertex Veo carry the model in the submit PATH
             // (:predictLongRunning), so the body has no model field.
-            body = .object([("instances", .array([.object([("prompt", .string(joinPromptText(parts)))])]))])
+            var instance: [(String, JSONValue)] = [("prompt", .string(joinPromptText(parts)))]
+            // First frame (BUG-089): the seed rides at instances[0].image as raw
+            // base64 + mimeType (no data: prefix), per the Vertex Veo reference
+            // (read 2026-10-15). The Gemini API shape is not yet live-verified.
+            if let seed = try seedImage(parts) {
+                instance.append(("image", .object([
+                    ("bytesBase64Encoded", .string(Data(seed.bytes).base64EncodedString())),
+                    ("mimeType", .string(seedMime(seed))),
+                ])))
+            }
+            body = .object([("instances", .array([.object(instance)]))])
         case "VideoBedrock":
             // Nova Reel carries the model in the BODY (modelId) and writes the
             // mp4 to the caller's S3 bucket.
@@ -267,10 +279,10 @@ public struct Video: Sendable {
         return id
     }
 
-    /// The image-to-video seed-frame data URL (BUG-010). Returns nil on the
-    /// text-to-video hot path; errors on more than one seed frame (a single-frame
-    /// condition, so multi-image is a separate slice — rejecting is honest).
-    private func seedImageURL(_ parts: [VideoPart]) throws -> String? {
+    /// The single image-to-video seed frame (Grok, BUG-010; Veo first frame,
+    /// BUG-089). Returns nil on the text-to-video hot path; errors on more than
+    /// one seed frame (a single-frame condition, so rejecting is honest).
+    private func seedImage(_ parts: [VideoPart]) throws -> MediaRef? {
         var seed: MediaRef?
         for part in parts {
             if case let .image(media) = part {
@@ -283,9 +295,19 @@ public struct Video: Sendable {
                 seed = media
             }
         }
-        guard let media = seed else { return nil }
-        let mime = media.mimeType.isEmpty ? "image/png" : media.mimeType
-        return "data:\(mime);base64,\(Data(media.bytes).base64EncodedString())"
+        return seed
+    }
+
+    /// The seed frame's MIME, defaulting to image/png.
+    private func seedMime(_ media: MediaRef) -> String {
+        media.mimeType.isEmpty ? "image/png" : media.mimeType
+    }
+
+    /// The Grok image-to-video seed-frame data URL (BUG-010). Returns nil on the
+    /// text-to-video hot path.
+    private func seedImageURL(_ parts: [VideoPart]) throws -> String? {
+        guard let media = try seedImage(parts) else { return nil }
+        return "data:\(seedMime(media));base64,\(Data(media.bytes).base64EncodedString())"
     }
 
     /// Video API base (Option D): a per-client override wins, else the provider's
