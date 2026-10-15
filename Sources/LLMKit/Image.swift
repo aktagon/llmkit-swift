@@ -68,7 +68,7 @@ public struct Image: Sendable {
 
     /// Attach an inpainting mask (transparent pixels mark the region to edit).
     /// OpenAI's `/v1/images/edits` form (requires at least one `.image(...)`)
-    /// and Vertex Imagen only; every other provider rejects it pre-flight.
+    /// only; every other provider rejects it pre-flight.
     public func mask(_ mimeType: String, _ data: Data) -> Image {
         with { $0.options.mask = MediaRef(mimeType: mimeType, bytes: [UInt8](data)) }
     }
@@ -183,8 +183,8 @@ public struct Image: Sendable {
         let variant = try selectRequestVariant(provider: slug, variants: imgCfg.variants, imageCount: imageCount)
 
         // Per-request-shape knob validation. Quality / output_format / background
-        // are OpenAI-only on the wire; count (n) is OpenAI + Recraft + xAI +
-        // Vertex. Recraft additionally has no aspect_ratio wire field (it sizes
+        // are OpenAI-only on the wire; count (n) is OpenAI + Recraft + xAI.
+        // Recraft additionally has no aspect_ratio wire field (it sizes
         // by WxH). A mask rides only the OpenAI multipart edits body.
         if options.mask != nil, variant.shape != ImageRequestShape.multipartForm {
             if variant.shape == ImageRequestShape.jsonGenerationsOpenAI {
@@ -201,7 +201,7 @@ public struct Image: Sendable {
             try reject(options.background, "background", slug)
             try reject(options.count.map { String($0) }, "count", slug)
             // Google takes safetySettings (wired in buildGoogleBody) but has no
-            // single-threshold safetyFilter knob — that is Vertex Imagen's.
+            // single-threshold safetyFilter knob (deprecated, BUG-101).
             if options.safetyFilter != nil {
                 throw LLMKitError.validation(
                     field: "safety_filter",
@@ -214,18 +214,6 @@ public struct Image: Sendable {
             try reject(options.background, "background", slug)
             try reject(options.safetyFilter, "safety_filter", slug)
             try rejectSafetySettings(slug)
-        case ImageRequestShape.jsonPredict:
-            try reject(options.quality, "quality", slug)
-            try reject(options.outputFormat, "output_format", slug)
-            try reject(options.background, "background", slug)
-            // Vertex Imagen's knob is the single-threshold safetySetting (wired
-            // in buildVertexBody); the per-category array is Google's.
-            if !options.safetySettings.isEmpty {
-                throw LLMKitError.validation(
-                    field: "safety_settings",
-                    message: "not supported by \(slug); use safety_filter for Vertex Imagen"
-                )
-            }
         case ImageRequestShape.jsonGenerations:
             if options.aspectRatio != nil {
                 throw LLMKitError.validation(
@@ -304,8 +292,6 @@ public struct Image: Sendable {
             body = buildOpenAIBody(parts, model)
         case ImageRequestShape.jsonInlineRefs:
             body = .object(buildXAIBody(parts, model))
-        case ImageRequestShape.jsonPredict:
-            body = buildVertexBody(parts)
         case ImageRequestShape.jsonGenerations:
             body = buildRecraftBody(parts, model)
         case ImageRequestShape.inlineParts: // Google generateContent
@@ -470,22 +456,6 @@ public struct Image: Sendable {
         return body
     }
 
-    /// Vertex AI Imagen `:predict` body: an `instances`/`parameters` envelope.
-    /// The instance carries the prompt; parameters carries `sampleCount` +
-    /// optional `aspectRatio`. The Imagen generate models take text only
-    /// (BUG-101), so image parts never reach here: the supportsImageInput gate
-    /// rejects them first.
-    private func buildVertexBody(_ parts: [ImagePart]) -> JSONValue {
-        let instance: [(String, JSONValue)] = [("prompt", .string(joinText(parts)))]
-        var parameters: [(String, JSONValue)] = [("sampleCount", .int(Int64(options.count ?? 1)))]
-        if let ratio = options.aspectRatio { parameters.append(("aspectRatio", .string(ratio))) }
-        if let filter = options.safetyFilter { parameters.append(("safetySetting", .string(filter))) }
-        return .object([
-            ("instances", .array([.object(instance)])),
-            ("parameters", .object(parameters)),
-        ])
-    }
-
     // MARK: - Response parsing (selected by responseShape, never provider name)
 
     private func parseResponse(_ raw: JSONValue, _ cfg: ImageGenDef) throws -> ImageResponse {
@@ -494,8 +464,6 @@ public struct Image: Sendable {
             return parseDataArray(
                 raw, inputPath: cfg.usageInputPath, outputPath: cfg.usageOutputPath,
                 reasoningPath: cfg.usageReasoningPath)
-        case "VertexPredictions":
-            return parseVertexResponse(raw)
         case "GoogleParts":
             return parseGoogleParts(raw, cfg)
         default:
@@ -535,29 +503,6 @@ public struct Image: Sendable {
         return ImageResponse(
             images: images, text: revised.joined(separator: "\n"), usage: usage,
             finishReason: nil, finishMessage: nil, raw: nil
-        )
-    }
-
-    /// Vertex AI Imagen `:predict` shape: `{predictions: [{bytesBase64Encoded,
-    /// mimeType}]}`. Vertex reports no token counts, so usage stays zero.
-    private func parseVertexResponse(_ raw: JSONValue) -> ImageResponse {
-        var images: [ImageData] = []
-        var finishReason = ""
-        if case let .array(predictions)? = raw.member("predictions") {
-            for entry in predictions {
-                if finishReason.isEmpty, case let .string(rai)? = entry.member("raiFilteredReason"), !rai.isEmpty {
-                    finishReason = rai
-                }
-                guard case let .string(b64)? = entry.member("bytesBase64Encoded"), !b64.isEmpty,
-                      let decoded = Data(base64Encoded: b64) else { continue }
-                var mime = "image/png"
-                if case let .string(echoed)? = entry.member("mimeType"), !echoed.isEmpty { mime = echoed }
-                images.append(ImageData(mimeType: mime, bytes: [UInt8](decoded)))
-            }
-        }
-        return ImageResponse(
-            images: images, text: "", usage: Usage(),
-            finishReason: optString(finishReason), finishMessage: nil, raw: nil
         )
     }
 
@@ -614,7 +559,8 @@ struct ImageOptions: Sendable {
     var background: String?
     var count: Int?
     var middleware: [MiddlewareFn] = []
-    /// Vertex Imagen's single-threshold `safetySetting` parameter.
+    /// Single safety threshold. Every image provider rejects it; deprecated
+    /// since Vertex Imagen shut down (BUG-101), removed at the next major.
     var safetyFilter: String?
     /// Google's per-category `safetySettings` array.
     var safetySettings: [SafetySetting] = []
