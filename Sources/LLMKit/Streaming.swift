@@ -8,6 +8,8 @@ import Foundation
 enum Streamer {
     static func run(
         config: ProviderSpec,
+        wireShape: String,
+        endpoint: String,
         apiKey: String,
         model: String,
         system: String?,
@@ -17,12 +19,19 @@ enum Streamer {
         baseURLOverride: String?,
         onDelta: @Sendable (String) -> Void
     ) async throws -> Response {
-        guard let stream = streamConfig(config.name) else {
+        // A wire shape that declares its own stream facts (OpenAI Responses:
+        // event-typed SSE) outranks the provider's, which describe its default
+        // protocol (HANDOFF-087).
+        let shapeStream = wireShapeStreamConfig(wireShape)
+        guard let stream = shapeStream ?? streamConfig(config.name) else {
             throw LLMKitError.validation(field: "provider", message: "streaming not supported: \(config.slug)")
         }
+        let finishReasonPath = shapeStream != nil
+            ? wireShapeStreamFinishReasonPath(wireShape)
+            : config.streamFinishReasonPath
 
         var (bodyValue, headers) = try RequestBuilder.buildBody(
-            config: config, wireShape: config.chatWireShape, apiKey: apiKey,
+            config: config, wireShape: wireShape, apiKey: apiKey,
             model: model, system: system, msgs: msgs, tools: [], options: options
         )
         guard case var .object(body) = bodyValue else {
@@ -37,7 +46,10 @@ enum Streamer {
         }
         bodyValue = .object(body)
 
-        let url = streamURL(config: config, stream: stream, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride)
+        let url = streamURL(
+            config: config, endpoint: endpoint, stream: stream, apiKey: apiKey, model: model,
+            baseURLOverride: baseURLOverride
+        )
         let (statusCode, lines) = try await http.openStream(url: url, body: bodyValue, headers: headers)
 
         if !(200..<300).contains(statusCode) {
@@ -46,7 +58,7 @@ enum Streamer {
             throw ResponseParser.parseError(config: config, statusCode: statusCode, body: Data(raw.utf8))
         }
 
-        let (finishEvent, finishPath) = parseStreamFinishPath(config.streamFinishReasonPath)
+        let (finishEvent, finishPath) = parseStreamFinishPath(finishReasonPath)
         var fullText = ""
         var finishReason = ""
         // Nothing is reported until a usage frame arrives. Seeding with six
@@ -123,11 +135,12 @@ enum Streamer {
     }
 
     private static func streamURL(
-        config: ProviderSpec, stream: StreamDef, apiKey: String, model: String, baseURLOverride: String?
+        config: ProviderSpec, endpoint: String, stream: StreamDef, apiKey: String, model: String,
+        baseURLOverride: String?
     ) -> String {
         if stream.endpoint.isEmpty {
             return RequestBuilder.buildURL(
-                config: config, endpoint: config.endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
+                config: config, endpoint: endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
             )
         }
         var base = baseURLOverride ?? config.baseURL
