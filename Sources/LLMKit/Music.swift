@@ -285,6 +285,9 @@ public struct Music: Sendable {
         }
         var finishReason = ""
         if case let .string(fr)? = first.member("finishReason") { finishReason = fr }
+        // A filtered call has no content; finishMessage is the only explanation.
+        var finishMessage = ""
+        if case let .string(fm)? = first.member("finishMessage") { finishMessage = fm }
 
         var audio: [AudioData] = []
         var text = ""
@@ -300,7 +303,10 @@ public struct Music: Sendable {
                 if case let .string(t)? = part.member("text"), !t.isEmpty { text += t }
             }
         }
-        return MusicResponse(audio: audio, text: text, usage: Usage(), finishReason: optString(finishReason), finishMessage: nil, raw: nil)
+        return MusicResponse(
+            audio: audio, text: text, usage: Usage(),
+            finishReason: optString(finishReason), finishMessage: optString(finishMessage), raw: nil
+        )
     }
 
     /// MiniMax responses. Shape:
