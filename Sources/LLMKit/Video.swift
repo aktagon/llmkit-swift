@@ -31,6 +31,10 @@ public struct Video: Sendable {
     /// Ordered text parts accumulated by `.text(...)`. `submit(prompt)` appends
     /// its own argument after these, so the request reads in caller order.
     var textParts: [String] = []
+    /// The final frame the video ends on (BUG-089).
+    var lastFrameImage: MediaRef?
+    /// Asset reference images, in caller order (BUG-089).
+    var referenceImages: [MediaRef] = []
     /// Caller S3 destination URI for output-uri delivery (Bedrock Nova Reel).
     var outputURIValue: String = ""
     var rawOptIn: Bool = false
@@ -51,6 +55,19 @@ public struct Video: Sendable {
     /// `VideoModelDef` sets `supportsImageToVideo`.
     public func image(_ mimeType: String, _ data: Data) -> Video {
         with { $0.inputImages.append(MediaRef(mimeType: mimeType, bytes: [UInt8](data))) }
+    }
+
+    /// Set the final frame the video ends on. Send it with a first frame
+    /// (`image`) on a model that takes a last frame; otherwise it is rejected
+    /// before send (BUG-089).
+    public func lastFrame(_ mimeType: String, _ data: Data) -> Video {
+        with { $0.lastFrameImage = MediaRef(mimeType: mimeType, bytes: [UInt8](data)) }
+    }
+
+    /// Append an asset reference image, such as a person, character or product
+    /// the video keeps. Add at most 3, without `image` or `lastFrame` (BUG-089).
+    public func addReferenceImage(_ mimeType: String, _ data: Data) -> Video {
+        with { $0.referenceImages.append(MediaRef(mimeType: mimeType, bytes: [UInt8](data))) }
     }
 
     /// Set the caller-supplied destination S3 URI (required by output-uri
@@ -159,11 +176,11 @@ public struct Video: Sendable {
                 message: "\(model) is a text-to-video-only model and does not accept image parts"
             )
         }
-        // ADR-096: a seed frame selects the WithSeedFrame submit request;
-        // a config with no such variant cannot send it.
+        try validateFrames(modelDef: modelDef, imageCount: imageCount)
+        // ADR-096: the carried inputs select the submit request; a config with
+        // no such variant cannot send it.
         let variant = try selectRequestVariant(
-            provider: slug, variants: vgCfg.variants, imageCount: imageCount,
-            imageCarries: CarriedInput.withSeedFrame)
+            provider: slug, variants: vgCfg.variants, carries: carries(imageCount: imageCount))
         if vgCfg.requiresOutputURI, outputURIValue.isEmpty {
             throw LLMKitError.validation(
                 field: "output_uri",
@@ -171,6 +188,58 @@ public struct Video: Sendable {
             )
         }
         return variant
+    }
+
+    /// The most asset reference images a Veo request takes (Gemini API and
+    /// Vertex Veo pages, read 2026-10-15).
+    static let maxReferenceImages = 3
+
+    /// Rejects a last frame or reference images the model or the request
+    /// cannot carry, before any HTTP call (BUG-089). Same rules, order and
+    /// messages as Go's `validateVideoFrames`.
+    private func validateFrames(modelDef: VideoModelDef, imageCount: Int) throws {
+        let refs = referenceImages.count
+        let last = lastFrameImage != nil
+        if last, !modelDef.supportsLastFrame {
+            throw LLMKitError.validation(
+                field: "last_frame", message: "\(modelDef.modelId) does not accept a last frame")
+        }
+        if refs > 0, !modelDef.supportsReferenceImages {
+            throw LLMKitError.validation(
+                field: "reference_images", message: "\(modelDef.modelId) does not accept reference images")
+        }
+        if refs > Self.maxReferenceImages {
+            throw LLMKitError.validation(
+                field: "reference_images",
+                message: "at most \(Self.maxReferenceImages) reference images, got \(refs)")
+        }
+        if refs > 0, imageCount > 0 || last {
+            // Live 2026-10-15: Veo answers 400 "Unsupported video generation
+            // request"; Vertex documents the inputs as exclusive.
+            throw LLMKitError.validation(
+                field: "reference_images", message: "cannot be combined with a first or last frame")
+        }
+        if last, imageCount == 0 {
+            throw LLMKitError.validation(field: "last_frame", message: "requires a first frame")
+        }
+    }
+
+    /// The request's carried inputs (ADR-096): reference images, a seed frame
+    /// with an optional last frame, or text only.
+    private func carries(imageCount: Int) -> [String] {
+        if !referenceImages.isEmpty { return [CarriedInput.withReferenceImages] }
+        if imageCount > 0, lastFrameImage != nil {
+            return [CarriedInput.withSeedFrame, CarriedInput.withLastFrame]
+        }
+        return partsCarry(imageCount: imageCount, imageInput: CarriedInput.withSeedFrame)
+    }
+
+    /// A Veo image object: raw base64 bytes and the MIME type.
+    private func veoImage(_ media: MediaRef) -> JSONValue {
+        .object([
+            ("bytesBase64Encoded", .string(Data(media.bytes).base64EncodedString())),
+            ("mimeType", .string(seedMime(media))),
+        ])
     }
 
     // MARK: - Submit dispatch (selected by wireShape, never provider name)
@@ -215,12 +284,26 @@ public struct Video: Sendable {
             // base64 + mimeType (no data: prefix), per the Vertex Veo reference
             // (read 2026-10-15). The Gemini API shape is not yet live-verified.
             if let seed = try seedImage(parts) {
-                instance.append(("image", .object([
-                    ("bytesBase64Encoded", .string(Data(seed.bytes).base64EncodedString())),
-                    ("mimeType", .string(seedMime(seed))),
-                ])))
+                instance.append(("image", veoImage(seed)))
             }
-            body = .object([("instances", .array([.object(instance)]))])
+            // Last frame and asset reference images (BUG-089): same
+            // {bytesBase64Encoded, mimeType} wrapper. Reference images force an
+            // 8-second video, sent as the NUMBER 8 on both APIs (live
+            // 2026-10-15: the Gemini API rejects the string "8" its docs show).
+            if let last = lastFrameImage {
+                instance.append(("lastFrame", veoImage(last)))
+            }
+            if referenceImages.isEmpty {
+                body = .object([("instances", .array([.object(instance)]))])
+            } else {
+                instance.append(("referenceImages", .array(referenceImages.map {
+                    .object([("image", veoImage($0)), ("referenceType", .string("asset"))])
+                })))
+                body = .object([
+                    ("instances", .array([.object(instance)])),
+                    ("parameters", .object([("durationSeconds", .int(8))])),
+                ])
+            }
         case "VideoBedrock":
             // Nova Reel carries the model in the BODY (modelId) and writes the
             // mp4 to the caller's S3 bucket.
