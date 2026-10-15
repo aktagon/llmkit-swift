@@ -6,6 +6,7 @@ public enum CarriedInput {
     public static let textOnly = "TextOnly"
     public static let withReferenceImages = "WithReferenceImages"
     public static let withSeedFrame = "WithSeedFrame"
+    public static let withLastFrame = "WithLastFrame"
 }
 
 /// Image request shapes: each names one request body (ADR-096).
@@ -21,9 +22,10 @@ public enum ImageRequestShape {
 
 /// One wire request of an image or video config, keyed by the inputs it
 /// carries (ADR-096). `shape` is empty on a video variant; an empty
-/// `endpoint` means the provider's main endpoint template.
+/// `endpoint` means the provider's main endpoint template. `carries` lists
+/// the carried inputs; a first-and-last-frame variant carries two.
 public struct RequestVariant: Sendable, Equatable {
-    public let carries: String
+    public let carries: [String]
     public let shape: String
     public let endpoint: String
 }
@@ -63,8 +65,8 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageOutputPath: "usageMetadata.candidatesTokenCount",
             usageReasoningPath: "usageMetadata.thoughtsTokenCount",
             variants: [
-                RequestVariant(carries: "TextOnly", shape: "InlineParts", endpoint: ""),
-                RequestVariant(carries: "WithReferenceImages", shape: "InlineParts", endpoint: ""),
+                RequestVariant(carries: ["TextOnly"], shape: "InlineParts", endpoint: ""),
+                RequestVariant(carries: ["WithReferenceImages"], shape: "InlineParts", endpoint: ""),
             ],
             models: [
                 ImageModelDef(
@@ -93,8 +95,8 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageOutputPath: "",
             usageReasoningPath: "",
             variants: [
-                RequestVariant(carries: "TextOnly", shape: "JSONInlineRefs", endpoint: "/v1/images/generations"),
-                RequestVariant(carries: "WithReferenceImages", shape: "JSONInlineRefs", endpoint: "/v1/images/edits"),
+                RequestVariant(carries: ["TextOnly"], shape: "JSONInlineRefs", endpoint: "/v1/images/generations"),
+                RequestVariant(carries: ["WithReferenceImages"], shape: "JSONInlineRefs", endpoint: "/v1/images/edits"),
             ],
             models: [
                 ImageModelDef(
@@ -115,8 +117,8 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageOutputPath: "usage.output_tokens",
             usageReasoningPath: "",
             variants: [
-                RequestVariant(carries: "TextOnly", shape: "JSONGenerationsOpenAI", endpoint: "/v1/images/generations"),
-                RequestVariant(carries: "WithReferenceImages", shape: "MultipartForm", endpoint: "/v1/images/edits"),
+                RequestVariant(carries: ["TextOnly"], shape: "JSONGenerationsOpenAI", endpoint: "/v1/images/generations"),
+                RequestVariant(carries: ["WithReferenceImages"], shape: "MultipartForm", endpoint: "/v1/images/edits"),
             ],
             models: [
                 ImageModelDef(
@@ -161,7 +163,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageOutputPath: "usage.completion_tokens",
             usageReasoningPath: "",
             variants: [
-                RequestVariant(carries: "TextOnly", shape: "JSONGenerations", endpoint: "/v1/images"),
+                RequestVariant(carries: ["TextOnly"], shape: "JSONGenerations", endpoint: "/v1/images"),
             ],
             models: [
                 ImageModelDef(
@@ -230,7 +232,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageOutputPath: "",
             usageReasoningPath: "",
             variants: [
-                RequestVariant(carries: "TextOnly", shape: "JSONGenerations", endpoint: "/v1/images/generations"),
+                RequestVariant(carries: ["TextOnly"], shape: "JSONGenerations", endpoint: "/v1/images/generations"),
             ],
             models: [
                 ImageModelDef(
