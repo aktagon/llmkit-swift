@@ -91,7 +91,23 @@ enum Transforms {
             ]))
         }
 
+        var prevResult = false
         for msg in msgs {
+            let isResult: Bool
+            if case .result = msg { isResult = true } else { isResult = false }
+            defer { prevResult = isResult }
+            // Converse wants every toolResult answering one assistant turn
+            // inside ONE user message; one message per result is a 400 (live,
+            // 2026-10-15). A result that follows a result joins the message
+            // the first one opened.
+            if bedrock, isResult, prevResult,
+               case let .object(open)? = messages.last,
+               case let .array(blocks)? = open.last(where: { $0.0 == "content" })?.1,
+               case let .object(entry) = flatProjectedEntry(msg, wireShape: wireShape, config: config, bedrock: bedrock),
+               case let .array(more)? = entry.last(where: { $0.0 == "content" })?.1 {
+                messages[messages.count - 1] = .object(open.map { $0.0 == "content" ? ($0.0, .array(blocks + more)) : $0 })
+                continue
+            }
             if case let .turn(shape, wire, _) = msg,
                appendFlatReplayedTurn(&messages, shape: shape, wire: wire, config: config, bedrock: bedrock) {
                 continue
