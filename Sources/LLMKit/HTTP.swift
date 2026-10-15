@@ -84,11 +84,7 @@ struct HTTPClient: Sendable {
         }
         request.httpBody = payload
 
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw LLMKitError.transport("non-HTTP response")
-        }
-        return (http.statusCode, data)
+        return try await send(request)
     }
 
     /// POST a JSON body signed with AWS SigV4 (Bedrock). The signature covers
@@ -121,11 +117,7 @@ struct HTTPClient: Sendable {
         applyClientConfig(&request)
         request.httpBody = payload
 
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw LLMKitError.transport("non-HTTP response")
-        }
-        return (http.statusCode, data)
+        return try await send(request)
     }
 
     /// GET a URL signed with AWS SigV4 (Bedrock async-invoke poll). The empty
@@ -154,11 +146,7 @@ struct HTTPClient: Sendable {
         )
         for (name, value) in signed { request.setValue(value, forHTTPHeaderField: name) }
         applyClientConfig(&request)
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw LLMKitError.transport("non-HTTP response")
-        }
-        return (http.statusCode, data)
+        return try await send(request)
     }
 
     /// GET a URL and return the status code + raw response bytes. Used by the
@@ -173,11 +161,7 @@ struct HTTPClient: Sendable {
             request.setValue(value, forHTTPHeaderField: name)
         }
         applyClientConfig(&request)
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw LLMKitError.transport("non-HTTP response")
-        }
-        return (http.statusCode, data)
+        return try await send(request)
     }
 
     /// Mirrors Go stdlib mime/multipart escapeQuotes and additionally strips
@@ -246,11 +230,7 @@ struct HTTPClient: Sendable {
         applyClientConfig(&request)
         request.httpBody = payload
 
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw LLMKitError.transport("non-HTTP response")
-        }
-        return (http.statusCode, data)
+        return try await send(request)
     }
 
     /// POST raw bytes with an `application/octet-stream` body. Used by the
@@ -273,11 +253,7 @@ struct HTTPClient: Sendable {
         applyClientConfig(&request)
         request.httpBody = body
 
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw LLMKitError.transport("non-HTTP response")
-        }
-        return (http.statusCode, data)
+        return try await send(request)
     }
 
     /// Open a streaming (SSE) POST. Returns the status code and the line
@@ -287,7 +263,7 @@ struct HTTPClient: Sendable {
         url: String,
         body: JSONValue,
         headers: [(String, String)]
-    ) async throws -> (statusCode: Int, lines: AsyncLineSequence<URLSession.AsyncBytes>) {
+    ) async throws -> (statusCode: Int, lines: RedactedLines) {
         guard let endpoint = URL(string: url) else {
             throw LLMKitError.validation(field: "url", message: "invalid URL")
         }
@@ -303,10 +279,71 @@ struct HTTPClient: Sendable {
         }
         request.httpBody = payload
 
-        let (bytes, response) = try await session.bytes(for: request)
+        let (bytes, response): (URLSession.AsyncBytes, URLResponse)
+        do {
+            (bytes, response) = try await session.bytes(for: request)
+        } catch {
+            throw redactTransportError(error, url: request.url)
+        }
         guard let http = response as? HTTPURLResponse else {
             throw LLMKitError.transport("non-HTTP response")
         }
-        return (http.statusCode, bytes.lines)
+        return (http.statusCode, RedactedLines(base: bytes.lines, url: request.url))
+    }
+
+    /// The one send every non-streaming request goes through (VULN-001).
+    private func send(_ request: URLRequest) async throws -> (statusCode: Int, data: Data) {
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw redactTransportError(error, url: request.url)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw LLMKitError.transport("non-HTTP response")
+        }
+        return (http.statusCode, data)
+    }
+}
+
+/// VULN-001: Foundation's URLError keeps the full request URL in `userInfo`
+/// (`NSErrorFailingURLStringKey`, `NSErrorFailingURLKey`, and again inside
+/// `NSUnderlyingError`), and a QueryParamKey provider (Google) carries the API
+/// key in that URL's `?key=`. Printing the error (`"\(error)"`,
+/// `String(describing:)`, a crash reporter) then writes the key out. Rebuild
+/// the URLError with the same code and its localized description as the only
+/// `userInfo` entry, so callers still catch `URLError(.timedOut)` (BUG-062)
+/// but no URL survives. Any other error passes through unchanged.
+func redactTransportError(_ error: Error, url: URL?) -> Error {
+    guard let urlError = error as? URLError else { return error }
+    var text = urlError.localizedDescription
+    if let full = url?.absoluteString, !full.isEmpty {
+        text = text.replacingOccurrences(of: full, with: "<url>")
+    }
+    return URLError(urlError.code, userInfo: [NSLocalizedDescriptionKey: text])
+}
+
+/// The SSE line sequence with the same URL-error redaction as the request: a
+/// connection that drops mid-stream throws from iteration, not from the send.
+struct RedactedLines: AsyncSequence {
+    typealias Element = String
+    let base: AsyncLineSequence<URLSession.AsyncBytes>
+    let url: URL?
+
+    struct AsyncIterator: AsyncIteratorProtocol {
+        var base: AsyncLineSequence<URLSession.AsyncBytes>.AsyncIterator
+        let url: URL?
+
+        mutating func next() async throws -> String? {
+            do {
+                return try await base.next()
+            } catch {
+                throw redactTransportError(error, url: url)
+            }
+        }
+    }
+
+    func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(base: base.makeAsyncIterator(), url: url)
     }
 }

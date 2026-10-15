@@ -180,7 +180,9 @@ public struct Image: Sendable {
 
         // ADR-096: the request's parts pick the wire request; a config with no
         // variant for those inputs cannot send it.
-        let variant = try selectRequestVariant(provider: slug, variants: imgCfg.variants, imageCount: imageCount)
+        let variant = try selectRequestVariant(
+            provider: slug, variants: imgCfg.variants, imageCount: imageCount,
+            imageCarries: CarriedInput.withReferenceImages)
 
         // Per-request-shape knob validation. Quality / output_format / background
         // are OpenAI-only on the wire; count (n) is OpenAI + Recraft + xAI.

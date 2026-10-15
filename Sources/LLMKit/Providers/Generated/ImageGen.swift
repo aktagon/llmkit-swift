@@ -5,6 +5,7 @@
 public enum CarriedInput {
     public static let textOnly = "TextOnly"
     public static let withReferenceImages = "WithReferenceImages"
+    public static let withSeedFrame = "WithSeedFrame"
 }
 
 /// Image request shapes: each names one request body (ADR-096).
