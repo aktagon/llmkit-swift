@@ -13,6 +13,7 @@ public enum ImageRequestShape {
     public static let jsonGenerationsOpenAI = "JSONGenerationsOpenAI"
     public static let multipartForm = "MultipartForm"
     public static let jsonInlineRefs = "JSONInlineRefs"
+    /// Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen shut down, BUG-101); removed at the next major.
     public static let jsonPredict = "JSONPredict"
     public static let jsonGenerations = "JSONGenerations"
 }
@@ -243,43 +244,6 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     modelId: "recraftv3_vector",
                     label: "Recraft V3 (vector / SVG)",
                     aspectRatios: [],
-                    imageSizes: [],
-                    maxInputImages: 0,
-                    supportsImageInput: false
-                ),
-            ]
-        )
-    case .vertex:
-        return ImageGenDef(
-            outputMode: "Base64Inline",
-            responseShape: "VertexPredictions",
-            usageInputPath: "",
-            usageOutputPath: "",
-            usageReasoningPath: "",
-            variants: [
-                RequestVariant(carries: "TextOnly", shape: "JSONPredict", endpoint: ""),
-            ],
-            models: [
-                ImageModelDef(
-                    modelId: "imagen-3.0-fast-generate-001",
-                    label: "Imagen 3 Fast",
-                    aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
-                    imageSizes: [],
-                    maxInputImages: 0,
-                    supportsImageInput: false
-                ),
-                ImageModelDef(
-                    modelId: "imagen-3.0-generate-002",
-                    label: "Imagen 3",
-                    aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
-                    imageSizes: [],
-                    maxInputImages: 0,
-                    supportsImageInput: false
-                ),
-                ImageModelDef(
-                    modelId: "imagen-4.0-generate-preview-06-06",
-                    label: "Imagen 4 Preview",
-                    aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
                     imageSizes: [],
                     maxInputImages: 0,
                     supportsImageInput: false
