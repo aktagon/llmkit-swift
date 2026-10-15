@@ -49,6 +49,16 @@ public func musicGenConfig(_ provider: ProviderName) -> MusicGenDef? {
                     availableOutputFormats: ["audio/mpeg"],
                     supportsImageInput: false
                 ),
+                MusicModelDef(
+                    modelId: "lyria-3.5",
+                    label: "Lyria 3.5",
+                    supportsLyrics: true,
+                    maxDurationSeconds: 0,
+                    outputMime: "audio/mpeg",
+                    sampleRateHz: 0,
+                    availableOutputFormats: ["audio/mpeg"],
+                    supportsImageInput: false
+                ),
             ]
         )
     case .minimax:
