@@ -33,9 +33,11 @@ extension Image {
     /// raw opts into the parsed provider body on the response (ADR-014).
     public func raw() -> Image { with { $0.options.raw = true } }
 
-    /// safetyFilter sets Vertex Imagen's single-threshold `safetySetting` parameter.
-    /// Rejected by every other image provider — Google's per-category
-    /// equivalent is `safetySettings`.
+    /// safetyFilter sets a single image safety threshold. Every image provider rejects it
+    /// with a validation error.
+    ///
+    /// Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen
+    /// shut down, BUG-101); removed at the next major.
     public func safetyFilter(_ value: String) -> Image { with { $0.options.safetyFilter = value } }
 
     /// safetySettings sets the per-category safety thresholds (Google).
