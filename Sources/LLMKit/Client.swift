@@ -375,12 +375,13 @@ public struct Text: Sendable {
     @discardableResult
     public func stream(_ userPrompt: String, _ onDelta: @Sendable (String) -> Void) async throws -> Response {
         let config = providerConfig(provider)
-        guard options.proto.isEmpty else {
-            throw LLMKitError.validation(field: "protocol", message: "stream supports only the default chat protocol")
-        }
+        // ADR-055: a non-default protocol (Responses) selects its endpoint and
+        // wire shape, and the wire shape selects the stream facts (HANDOFF-087).
+        let (wireShape, endpoint) = try RequestBuilder.resolveChatProtocol(config: config, token: options.proto)
         let model = try RequestBuilder.resolveModel(config, modelOverride)
         return try await Streamer.run(
-            config: config, apiKey: apiKey, model: model, system: systemPrompt,
+            config: config, wireShape: wireShape, endpoint: endpoint,
+            apiKey: apiKey, model: model, system: systemPrompt,
             msgs: userMsgs(userPrompt), options: options,
             http: http, baseURLOverride: baseURLOverride, onDelta: onDelta
         )
