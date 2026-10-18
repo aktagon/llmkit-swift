@@ -18,6 +18,7 @@ public enum ImageRequestShape {
     /// Deprecated: no provider accepts this since 2026-10-15 (Vertex Imagen shut down, BUG-101); removed at the next major.
     public static let jsonPredict = "JSONPredict"
     public static let jsonGenerations = "JSONGenerations"
+    public static let jsonGenerationsInputRefs = "JSONGenerationsInputRefs"
 }
 
 /// One wire request of an image or video config, keyed by the inputs it
@@ -164,6 +165,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
             usageReasoningPath: "",
             variants: [
                 RequestVariant(carries: ["TextOnly"], shape: "JSONGenerations", endpoint: "/v1/images"),
+                RequestVariant(carries: ["WithReferenceImages"], shape: "JSONGenerationsInputRefs", endpoint: "/v1/images"),
             ],
             models: [
                 ImageModelDef(
@@ -172,7 +174,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "bytedance-seed/seedream-5-0-flash",
@@ -180,7 +182,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "google/gemini-2.5-flash-image",
@@ -188,7 +190,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "google/gemini-3-pro-image",
@@ -196,7 +198,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "google/gemini-3.1-flash-image",
@@ -204,7 +206,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "google/gemini-3.1-flash-lite-image",
@@ -212,7 +214,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "meta/muse-image",
@@ -228,7 +230,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "openai/gpt-5-image-mini",
@@ -236,7 +238,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "openai/gpt-5.4-image-2",
@@ -244,7 +246,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "openai/gpt-image-2",
@@ -252,7 +254,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "openai/gpt-image-2.5-sunburst",
@@ -260,7 +262,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
                 ImageModelDef(
                     modelId: "tencent/hy-image-v3.5-preview",
@@ -268,7 +270,7 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     aspectRatios: [],
                     imageSizes: [],
                     maxInputImages: 0,
-                    supportsImageInput: false
+                    supportsImageInput: true
                 ),
             ]
         )
