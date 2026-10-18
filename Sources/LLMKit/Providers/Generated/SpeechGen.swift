@@ -15,9 +15,11 @@ public struct SpeechModelDef: Sendable, Equatable {
 
 public struct SpeechGenDef: Sendable, Equatable {
     public let wireShape: String
-    /// audioResponseEncoding: "base64Envelope" | "rawBody" | "base64InteractionSteps" (ADR-051).
+    /// audioResponseEncoding: "base64Envelope" | "rawBody" | "base64InteractionSteps" | "hexEnvelope" (ADR-051).
     public let audioResponseEncoding: String
     public let genEndpoint: String
+    /// Speech API base when it differs from the chat base; "" = use chat base.
+    public let baseURL: String
     public let models: [SpeechModelDef]
 }
 
@@ -28,6 +30,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
             wireShape: "SpeechGemini",
             audioResponseEncoding: "base64InteractionSteps",
             genEndpoint: "/v1beta/interactions",
+            baseURL: "",
             models: [
                 SpeechModelDef(
                     modelId: "gemini-3.8-flash-lite-tts",
@@ -52,6 +55,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
             wireShape: "SpeechInworld",
             audioResponseEncoding: "base64Envelope",
             genEndpoint: "/tts/v1/voice",
+            baseURL: "",
             models: [
                 SpeechModelDef(
                     modelId: "inworld-tts-1.5-max",
@@ -79,11 +83,53 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                 ),
             ]
         )
+    case .minimax:
+        return SpeechGenDef(
+            wireShape: "SpeechMiniMax",
+            audioResponseEncoding: "hexEnvelope",
+            genEndpoint: "/v1/t2a_v2",
+            baseURL: "https://api.minimax.io",
+            models: [
+                SpeechModelDef(
+                    modelId: "speech-2.6-hd",
+                    label: "MiniMax Speech 2.6 HD",
+                    outputMime: "audio/mpeg",
+                    sampleRateHz: 0,
+                    maxSpeakers: 0,
+                    supportsSpeechStyle: false
+                ),
+                SpeechModelDef(
+                    modelId: "speech-2.6-turbo",
+                    label: "MiniMax Speech 2.6 Turbo",
+                    outputMime: "audio/mpeg",
+                    sampleRateHz: 0,
+                    maxSpeakers: 0,
+                    supportsSpeechStyle: false
+                ),
+                SpeechModelDef(
+                    modelId: "speech-2.8-hd",
+                    label: "MiniMax Speech 2.8 HD",
+                    outputMime: "audio/mpeg",
+                    sampleRateHz: 0,
+                    maxSpeakers: 0,
+                    supportsSpeechStyle: false
+                ),
+                SpeechModelDef(
+                    modelId: "speech-2.8-turbo",
+                    label: "MiniMax Speech 2.8 Turbo",
+                    outputMime: "audio/mpeg",
+                    sampleRateHz: 0,
+                    maxSpeakers: 0,
+                    supportsSpeechStyle: false
+                ),
+            ]
+        )
     case .openai:
         return SpeechGenDef(
             wireShape: "SpeechOpenAI",
             audioResponseEncoding: "rawBody",
             genEndpoint: "/v1/audio/speech",
+            baseURL: "",
             models: [
                 SpeechModelDef(
                     modelId: "gpt-4o-mini-tts",
@@ -116,6 +162,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
             wireShape: "SpeechOpenAI",
             audioResponseEncoding: "rawBody",
             genEndpoint: "/v1/audio/speech",
+            baseURL: "",
             models: [
                 SpeechModelDef(
                     modelId: "elevenlabs/eleven-v3",
