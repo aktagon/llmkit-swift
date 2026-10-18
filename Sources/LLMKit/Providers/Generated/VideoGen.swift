@@ -143,6 +143,28 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     resolutions: ["480p", "720p"],
                     maxInputImages: 1
                 ),
+                VideoModelDef(
+                    modelId: "grok-imagine-video-1.5",
+                    label: "Grok Imagine Video 1.5",
+                    supportsImageToVideo: true,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 15,
+                    outputMime: "video/mp4",
+                    resolutions: ["1080p", "480p", "720p"],
+                    maxInputImages: 1
+                ),
+                VideoModelDef(
+                    modelId: "grok-imagine-video-1.5-lite",
+                    label: "Grok Imagine Video 1.5 Lite",
+                    supportsImageToVideo: true,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 15,
+                    outputMime: "video/mp4",
+                    resolutions: ["1080p", "480p", "720p"],
+                    maxInputImages: 1
+                ),
             ]
         )
     case .minimax:
