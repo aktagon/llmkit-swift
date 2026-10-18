@@ -206,6 +206,14 @@ enum VideoWire {
             case "failed", "cancelled": return failed(status, "")
             default: return running(status)
             }
+        case "VideoOpenRouter":
+            let status = raw.stringValue(at: "status")
+            switch status {
+            case "completed": return succeeded(status)
+            case "failed", "cancelled", "expired":
+                return failed(status, firstNonEmpty(raw.stringValue(at: "error"), status))
+            default: return running(status)
+            }
         case "VideoZhipu":
             let status = raw.stringValue(at: "task_status")
             switch status {
@@ -290,6 +298,11 @@ enum VideoWire {
             return urlResult(mime: mime, url: raw.stringValue(at: "output.video_url"))
         case "VideoPixVerse":
             return urlResult(mime: mime, url: raw.stringValue(at: "Resp.url"))
+        case "VideoOpenRouter":
+            // Download delivery: unsigned_urls[0] needs the API key, so the
+            // download step fetches it with the auth headers. The signed urls[]
+            // array is a secret and is never read.
+            return urlResult(mime: mime, url: stringAt(raw, "unsigned_urls[0]"))
         case "VideoBedrock":
             let url = raw.stringValue(at: "outputDataConfig.s3OutputDataConfig.s3Uri")
             if url.isEmpty {
