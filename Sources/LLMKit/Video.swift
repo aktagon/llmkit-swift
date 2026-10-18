@@ -234,6 +234,16 @@ public struct Video: Sendable {
         return partsCarry(imageCount: imageCount, imageInput: CarriedInput.withSeedFrame)
     }
 
+    /// One OpenRouter frame_images item.
+    private func openRouterFrame(_ media: MediaRef, _ frameType: String) -> JSONValue {
+        let url = "data:\(seedMime(media));base64,\(Data(media.bytes).base64EncodedString())"
+        return .object([
+            ("type", .string("image_url")),
+            ("image_url", .object([("url", .string(url))])),
+            ("frame_type", .string(frameType)),
+        ])
+    }
+
     /// A Veo image object: raw base64 bytes and the MIME type.
     private func veoImage(_ media: MediaRef) -> JSONValue {
         .object([
@@ -317,6 +327,20 @@ public struct Video: Sendable {
                     ("s3OutputDataConfig", .object([("s3Uri", .string(outputURIValue))])),
                 ])),
             ])
+        case "VideoOpenRouter":
+            // Image-to-video (HANDOFF-091): each frame is an OpenRouter
+            // ContentPartImage plus frame_type, first_frame then last_frame
+            // (live probe 2026-10-18; openrouter.ai/openapi.json).
+            var pairs: [(String, JSONValue)] = [
+                ("model", .string(model)),
+                ("prompt", .string(joinPromptText(parts))),
+            ]
+            if let seed = try seedImage(parts) {
+                var frames = [openRouterFrame(seed, "first_frame")]
+                if let last = lastFrameImage { frames.append(openRouterFrame(last, "last_frame")) }
+                pairs.append(("frame_images", .array(frames)))
+            }
+            body = .object(pairs)
         default:
             // Shared {model, prompt} arm (Grok / Zhipu / Vidu / Together /
             // MiniMax). Image-to-video (BUG-010): a seed frame inlines as a data

@@ -216,7 +216,9 @@ public struct Image: Sendable {
             try reject(options.background, "background", slug)
             try reject(options.safetyFilter, "safety_filter", slug)
             try rejectSafetySettings(slug)
-        case ImageRequestShape.jsonGenerations:
+        case ImageRequestShape.jsonGenerations, ImageRequestShape.jsonGenerationsInputRefs:
+            // jsonGenerationsInputRefs is the jsonGenerations body plus
+            // input_references, so the same knobs apply.
             if options.aspectRatio != nil {
                 throw LLMKitError.validation(
                     field: "aspect_ratio",
@@ -296,6 +298,8 @@ public struct Image: Sendable {
             body = .object(buildXAIBody(parts, model))
         case ImageRequestShape.jsonGenerations:
             body = buildRecraftBody(parts, model)
+        case ImageRequestShape.jsonGenerationsInputRefs: // OpenRouter with reference images
+            body = buildInputRefsBody(parts, model)
         case ImageRequestShape.inlineParts: // Google generateContent
             body = buildGoogleBody(parts)
         default:
@@ -420,6 +424,10 @@ public struct Image: Sendable {
     /// `b64_json` (Recraft defaults to URL delivery) so the decode path is
     /// uniform; vector/SVG output is selected by the model id, not a body flag.
     private func buildRecraftBody(_ parts: [ImagePart], _ model: String) -> JSONValue {
+        .object(recraftPairs(parts, model))
+    }
+
+    private func recraftPairs(_ parts: [ImagePart], _ model: String) -> [(String, JSONValue)] {
         var body: [(String, JSONValue)] = [
             ("model", .string(model)),
             ("prompt", .string(joinText(parts))),
@@ -427,6 +435,23 @@ public struct Image: Sendable {
         ]
         if let size = options.imageSize { body.append(("size", .string(size))) }
         if let count = options.count { body.append(("n", .int(Int64(count)))) }
+        return body
+    }
+
+    /// The Recraft body plus `input_references`: each image part, in caller
+    /// order, as an OpenRouter ContentPartImage `{type:"image_url",
+    /// image_url:{url}}` with the bytes as a base64 data URL (live probe
+    /// 2026-10-18).
+    private func buildInputRefsBody(_ parts: [ImagePart], _ model: String) -> JSONValue {
+        var body = recraftPairs(parts, model)
+        var refs: [JSONValue] = []
+        for part in parts {
+            guard case let .image(media) = part else { continue }
+            let mime = media.mimeType.isEmpty ? "image/png" : media.mimeType
+            let url = "data:\(mime);base64,\(Data(media.bytes).base64EncodedString())"
+            refs.append(.object([("type", .string("image_url")), ("image_url", .object([("url", .string(url))]))]))
+        }
+        body.append(("input_references", .array(refs)))
         return .object(body)
     }
 
