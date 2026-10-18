@@ -29,6 +29,8 @@ public struct VideoGenDef: Sendable, Equatable {
     public let pollEndpoint: String
     /// File-retrieve template with {file_id} for two-hop providers; "" = single-hop.
     public let fileEndpoint: String
+    /// Cancel template with {model} and {operation_id}; "" = no documented cancel.
+    public let cancelEndpoint: String
     public let submitHandleField: String
     public let requiresOutputURI: Bool
     public let models: [VideoModelDef]
@@ -46,6 +48,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             ],
             pollEndpoint: "/async-invoke/{id}",
             fileEndpoint: "",
+            cancelEndpoint: "",
             submitHandleField: "invocationArn",
             requiresOutputURI: true,
             models: [
@@ -75,6 +78,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             ],
             pollEndpoint: "/v1beta/{id}",
             fileEndpoint: "",
+            cancelEndpoint: "",
             submitHandleField: "name",
             requiresOutputURI: false,
             models: [
@@ -124,6 +128,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             ],
             pollEndpoint: "/v1/videos/{id}",
             fileEndpoint: "",
+            cancelEndpoint: "",
             submitHandleField: "request_id",
             requiresOutputURI: false,
             models: [
@@ -150,6 +155,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             ],
             pollEndpoint: "/v1/query/video_generation?task_id={id}",
             fileEndpoint: "/v1/files/retrieve?file_id={file_id}",
+            cancelEndpoint: "",
             submitHandleField: "task_id",
             requiresOutputURI: false,
             models: [
@@ -176,6 +182,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             ],
             pollEndpoint: "/openapi/v2/video/result/{id}",
             fileEndpoint: "",
+            cancelEndpoint: "",
             submitHandleField: "Resp.video_id",
             requiresOutputURI: false,
             models: [
@@ -224,6 +231,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             ],
             pollEndpoint: "/api/v1/tasks/{id}",
             fileEndpoint: "",
+            cancelEndpoint: "",
             submitHandleField: "output.task_id",
             requiresOutputURI: false,
             models: [
@@ -250,6 +258,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             ],
             pollEndpoint: "/v2/videos/{id}",
             fileEndpoint: "",
+            cancelEndpoint: "",
             submitHandleField: "id",
             requiresOutputURI: false,
             models: [
@@ -279,6 +288,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             ],
             pollEndpoint: "/{model}:fetchPredictOperation",
             fileEndpoint: "",
+            cancelEndpoint: "/{model}/operations/{operation_id}:cancel",
             submitHandleField: "name",
             requiresOutputURI: false,
             models: [
@@ -338,6 +348,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             ],
             pollEndpoint: "/ent/v2/tasks/{id}/creations",
             fileEndpoint: "",
+            cancelEndpoint: "",
             submitHandleField: "task_id",
             requiresOutputURI: false,
             models: [
@@ -386,6 +397,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
             ],
             pollEndpoint: "/v4/async-result/{id}",
             fileEndpoint: "",
+            cancelEndpoint: "",
             submitHandleField: "id",
             requiresOutputURI: false,
             models: [
