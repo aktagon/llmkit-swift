@@ -172,6 +172,132 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                 ),
             ]
         )
+    case .openrouter:
+        return VideoGenDef(
+            wireShape: "VideoOpenRouter",
+            outputDelivery: "DeliveryDownload",
+            videoBaseURL: "",
+            variants: [
+                RequestVariant(carries: ["TextOnly"], shape: "", endpoint: "/v1/videos"),
+            ],
+            pollEndpoint: "/v1/videos/{id}",
+            fileEndpoint: "",
+            cancelEndpoint: "",
+            submitHandleField: "id",
+            requiresOutputURI: false,
+            models: [
+                VideoModelDef(
+                    modelId: "alibaba/wan-3.0",
+                    label: "Wan 3.0",
+                    supportsImageToVideo: false,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 0,
+                    outputMime: "video/mp4",
+                    resolutions: [],
+                    maxInputImages: 0
+                ),
+                VideoModelDef(
+                    modelId: "bytedance/seedance-2.0",
+                    label: "Seedance 2.0",
+                    supportsImageToVideo: false,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 0,
+                    outputMime: "video/mp4",
+                    resolutions: [],
+                    maxInputImages: 0
+                ),
+                VideoModelDef(
+                    modelId: "bytedance/seedance-2.0-fast",
+                    label: "Seedance 2.0 Fast",
+                    supportsImageToVideo: false,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 0,
+                    outputMime: "video/mp4",
+                    resolutions: [],
+                    maxInputImages: 0
+                ),
+                VideoModelDef(
+                    modelId: "bytedance/seedance-2.5",
+                    label: "Seedance 2.5",
+                    supportsImageToVideo: false,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 0,
+                    outputMime: "video/mp4",
+                    resolutions: [],
+                    maxInputImages: 0
+                ),
+                VideoModelDef(
+                    modelId: "google/veo-3.1-fast",
+                    label: "Veo 3.1 Fast",
+                    supportsImageToVideo: false,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 0,
+                    outputMime: "video/mp4",
+                    resolutions: [],
+                    maxInputImages: 0
+                ),
+                VideoModelDef(
+                    modelId: "google/veo-3.1-lite",
+                    label: "Veo 3.1 Lite",
+                    supportsImageToVideo: false,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 0,
+                    outputMime: "video/mp4",
+                    resolutions: [],
+                    maxInputImages: 0
+                ),
+                VideoModelDef(
+                    modelId: "heygen/heygen-video-1",
+                    label: "HeyGen Video 1",
+                    supportsImageToVideo: false,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 0,
+                    outputMime: "video/mp4",
+                    resolutions: [],
+                    maxInputImages: 0
+                ),
+                VideoModelDef(
+                    modelId: "kwaivgi/kling-v3.0-std",
+                    label: "Kling 3.0 Standard",
+                    supportsImageToVideo: false,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 0,
+                    outputMime: "video/mp4",
+                    resolutions: [],
+                    maxInputImages: 0
+                ),
+                VideoModelDef(
+                    modelId: "minimax/hailuo-3",
+                    label: "Hailuo 3",
+                    supportsImageToVideo: false,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 0,
+                    outputMime: "video/mp4",
+                    resolutions: [],
+                    maxInputImages: 0
+                ),
+                VideoModelDef(
+                    modelId: "x-ai/grok-imagine-video-1.5-lite",
+                    label: "Grok Imagine Video 1.5 Lite",
+                    supportsImageToVideo: false,
+                    supportsLastFrame: false,
+                    supportsReferenceImages: false,
+                    maxDurationSeconds: 0,
+                    outputMime: "video/mp4",
+                    resolutions: [],
+                    maxInputImages: 0
+                ),
+            ]
+        )
     case .pixverse:
         return VideoGenDef(
             wireShape: "VideoPixVerse",
