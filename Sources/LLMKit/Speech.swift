@@ -7,10 +7,11 @@ import Foundation
 ///
 /// The generated `speechGenConfig(provider)` fact selects both the request body
 /// (`wireShape`) and the audio decode (`audioResponseEncoding`) — never the
-/// provider name. Two shapes ship: `SpeechInworld` (a flat-JSON POST whose reply
-/// carries base64 audio at `audioContent`) and `SpeechOpenAI` (a flat-JSON POST
+/// provider name. Four shapes ship: `SpeechInworld` (a flat-JSON POST whose reply
+/// carries base64 audio at `audioContent`), `SpeechOpenAI` (a flat-JSON POST
 /// whose reply is RAW audio bytes — never JSON, so the response is read as bytes
-/// and taken verbatim). Pre-flight validation (model + text or lines required;
+/// and taken verbatim), `SpeechGemini` (Interactions API, base64 audio in
+/// `steps[]`) and `SpeechMiniMax` (hex audio at `data.audio`). Pre-flight validation (model + text or lines required;
 /// voice or speakers; provider supports speech; model known; speakers and
 /// style the model takes, BUG-091) runs before any HTTP call. Voices are
 /// free-form: there is no catalogue. Fires the `speechGeneration` middleware
@@ -104,17 +105,20 @@ public struct Speech: Sendable {
 
             let endpoint = sgCfg.genEndpoint.isEmpty ? config.endpoint : sgCfg.genEndpoint
             // buildURL appends the QueryParamKey `?key=` for Google, as on every
-            // other Google call.
+            // other Google call. Speech base: explicit override > the config's
+            // distinct speech base (MiniMax, HANDOFF-094) > chat base.
+            let speechBase = baseURLOverride ?? (sgCfg.baseURL.isEmpty ? nil : sgCfg.baseURL)
             let url = endpoint.hasPrefix("http")
                 ? endpoint
                 : RequestBuilder.buildURL(
-                    config: config, endpoint: endpoint, apiKey: apiKey, model: model, baseURLOverride: baseURLOverride
+                    config: config, endpoint: endpoint, apiKey: apiKey, model: model, baseURLOverride: speechBase
                 )
 
             let body: JSONValue
             switch sgCfg.wireShape {
             case "SpeechOpenAI": body = buildOpenAIBody(model: model, voice: voice, text: text, style: style)
             case "SpeechGemini": body = buildGeminiBody(model: model, voice: voice, text: text)
+            case "SpeechMiniMax": body = buildMiniMaxBody(model: model, voice: voice, text: text)
             default: body = buildInworldBody(model: model, voice: voice, text: text)
             }
 
@@ -231,6 +235,17 @@ public struct Speech: Sendable {
         return .object(fields)
     }
 
+    /// MiniMax /v1/t2a_v2 body (HANDOFF-094): only the fields the reference
+    /// marks required. stream, output_format (hex) and audio_setting (mp3)
+    /// take their defaults.
+    private func buildMiniMaxBody(model: String, voice: String, text: String) -> JSONValue {
+        .object([
+            ("model", .string(model)),
+            ("text", .string(text)),
+            ("voice_setting", .object([("voice_id", .string(voice))])),
+        ])
+    }
+
     /// Gemini TTS body on the Interactions API (BUG-091): one user_input turn
     /// and an audio response. Single voice: one text item and
     /// `speech_config [{voice}]`; a style annotates the text item.
@@ -281,7 +296,8 @@ public struct Speech: Sendable {
     /// Decode the synthesized audio per the wire shape's audio response encoding
     /// (ADR-051 OAA-002). `rawBody` (OpenAI) takes the response body verbatim as
     /// the audio bytes; `base64Envelope` (Inworld) parses a JSON envelope and
-    /// base64-decodes the `audioContent` field. A 2xx body that does not parse
+    /// base64-decodes the `audioContent` field; `hexEnvelope` (MiniMax)
+    /// hex-decodes `data.audio` and raises on a nonzero `base_resp`. A 2xx body that does not parse
     /// to audio is a decoding error (HANDOFF-036 A5) — never a silent empty
     /// clip.
     private func parseResponse(
@@ -293,6 +309,8 @@ public struct Speech: Sendable {
             bytes = [UInt8](body)
         } else if encoding == "base64InteractionSteps" {
             (bytes, mime) = try parseInteractionSteps(provider: provider, fallbackMime: fallbackMime, body: body)
+        } else if encoding == "hexEnvelope" {
+            bytes = try parseHexEnvelope(provider: provider, body: body)
         } else {
             let raw: JSONValue
             do {
@@ -313,6 +331,33 @@ public struct Speech: Sendable {
             usage: Usage(),
             finishReason: nil
         )
+    }
+
+    /// Decode a MiniMax t2a_v2 reply (HANDOFF-094):
+    /// `{"data": {"audio": "<hex>"}, "base_resp": {"status_code", "status_msg"}}`.
+    /// MiniMax reports failures in `base_resp` on an HTTP 200, so a nonzero
+    /// `status_code` is an API error carrying `status_msg`. A success with
+    /// missing audio, or invalid hex, is a decoding error (HANDOFF-036 A5).
+    private func parseHexEnvelope(provider: String, body: Data) throws -> [UInt8] {
+        let raw: JSONValue
+        do {
+            raw = try JSONValue.parse(String(decoding: body, as: UTF8.self))
+        } catch {
+            throw LLMKitError.decoding("\(provider) speech response: not valid JSON: \(error)")
+        }
+        if case let .int(code)? = raw.lookup("base_resp.status_code"), code != 0 {
+            var msg = ""
+            if case let .string(m)? = raw.lookup("base_resp.status_msg") { msg = m }
+            throw LLMKitError.api(
+                provider: provider, statusCode: 200, message: "\(msg) (base_resp.status_code \(code))")
+        }
+        guard case let .string(hex)? = raw.lookup("data.audio"), !hex.isEmpty else {
+            throw LLMKitError.decoding("\(provider) speech response: missing or empty data.audio")
+        }
+        guard let decoded = Music.hexDecode(hex) else {
+            throw LLMKitError.decoding("\(provider) speech response: invalid hex in data.audio")
+        }
+        return decoded
     }
 
     /// Decode a Gemini TTS Interactions API reply (BUG-091). Google's documented

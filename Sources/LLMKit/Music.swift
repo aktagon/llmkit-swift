@@ -313,7 +313,7 @@ public struct Music: Sendable {
     /// `{"data": {"audio": "<hex>"}, "base_resp": {"status_msg": "..."}}`.
     private func parseMinimaxResponse(_ raw: JSONValue, _ fallbackMime: String) -> MusicResponse {
         var audio: [AudioData] = []
-        if case let .string(hex)? = raw.lookup("data.audio"), !hex.isEmpty, let decoded = hexDecode(hex) {
+        if case let .string(hex)? = raw.lookup("data.audio"), !hex.isEmpty, let decoded = Music.hexDecode(hex) {
             audio.append(AudioData(mimeType: fallbackMime, bytes: decoded))
         }
         var finishMessage = ""
@@ -326,7 +326,7 @@ public struct Music: Sendable {
     /// Decode a hex string to bytes. Returns nil on odd length or any non-hex
     /// digit (matching Go's hex.DecodeString error -> no audio). Hand-rolled to
     /// avoid a dependency.
-    private func hexDecode(_ s: String) -> [UInt8]? {
+    static func hexDecode(_ s: String) -> [UInt8]? {
         let chars = Array(s.utf8)
         guard chars.count % 2 == 0 else { return nil }
         var out: [UInt8] = []
@@ -340,7 +340,7 @@ public struct Music: Sendable {
         return out
     }
 
-    private func hexNibble(_ c: UInt8) -> UInt8? {
+    private static func hexNibble(_ c: UInt8) -> UInt8? {
         switch c {
         case 0x30...0x39: return c - 0x30        // 0-9
         case 0x61...0x66: return c - 0x61 + 10   // a-f
