@@ -302,7 +302,13 @@ enum VideoWire {
             // Download delivery: unsigned_urls[0] needs the API key, so the
             // download step fetches it with the auth headers. The signed urls[]
             // array is a secret and is never read.
-            return urlResult(mime: mime, url: stringAt(raw, "unsigned_urls[0]"))
+            // A completed poll without unsigned_urls[0] is an error, not an
+            // empty success (mirrors the Veo done-without-uri guard).
+            let url = stringAt(raw, "unsigned_urls[0]")
+            if url.isEmpty {
+                throw LLMKitError.unsupported("video generation: completed but carried no unsigned_urls")
+            }
+            return single(mime: mime, url: url, duration: 0)
         case "VideoBedrock":
             let url = raw.stringValue(at: "outputDataConfig.s3OutputDataConfig.s3Uri")
             if url.isEmpty {
