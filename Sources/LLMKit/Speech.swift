@@ -93,7 +93,7 @@ public struct Speech: Sendable {
                 field: "model", message: "\(model) is not a known speech-generation model for \(config.slug)"
             )
         }
-        try validateModel(modelDef)
+        try validateModel(sgCfg, modelDef)
 
         let baseEvent = Event(op: .speechGeneration, provider: provider.rawValue, model: model)
         let start = Date()
@@ -179,21 +179,24 @@ public struct Speech: Sendable {
         }
     }
 
-    /// Checks the request against the model's speaker and style facts (BUG-091).
-    private func validateModel(_ model: SpeechModelDef) throws {
+    /// Checks the request against what the config's body can carry and the
+    /// model's stated speaker and style facts (BUG-091). An unknown model fact
+    /// (nil) sends the request; only a stated false or a stated speaker count
+    /// that does not match blocks it (decision 009, HANDOFF-099).
+    private func validateModel(_ config: SpeechGenDef, _ model: SpeechModelDef) throws {
         if !speakers.isEmpty {
-            if model.maxSpeakers == 0 {
+            if !config.multiSpeaker || model.maxSpeakers == 1 {
                 throw LLMKitError.validation(
                     field: "speakers", message: "\(model.modelId) does not support multiple speakers")
             }
-            if speakers.count != model.maxSpeakers {
+            if let max = model.maxSpeakers, speakers.count != max {
                 throw LLMKitError.validation(
                     field: "speakers",
-                    message: "exactly \(model.maxSpeakers) speakers are required, got \(speakers.count)")
+                    message: "exactly \(max) speakers are required, got \(speakers.count)")
             }
         }
         let styled = !style.isEmpty || lines.contains(where: { !$0.style.isEmpty })
-        if styled && !model.supportsSpeechStyle {
+        if styled && (!config.carriesSpeechStyle || model.supportsSpeechStyle == false) {
             throw LLMKitError.validation(field: "style", message: "\(model.modelId) does not support a speech style")
         }
     }
