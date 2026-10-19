@@ -153,7 +153,7 @@ public struct Video: Sendable {
     // MARK: - Parts
 
     /// The internal video-input atom: prompt text plus optional seed frames.
-    private enum VideoPart {
+    enum VideoPart {
         case text(String)
         case image(MediaRef)
 
@@ -320,7 +320,7 @@ public struct Video: Sendable {
     /// poll handle id (read from the config-declared `submitHandleField` dotted
     /// path). The submit endpoint is the selected request variant's (ADR-096).
     /// SigV4 providers (Bedrock) sign the exact bytes.
-    private func dispatchSubmit(
+    func dispatchSubmit(
         config: ProviderSpec, vgCfg: VideoGenDef, variant: RequestVariant, model: String, parts: [VideoPart]
     ) async throws -> String {
         let base = videoBaseURL(config: config, vgCfg: vgCfg)
@@ -409,7 +409,7 @@ public struct Video: Sendable {
             if !aspectRatioValue.isEmpty { pairs.append(("aspect_ratio", .string(aspectRatioValue))) }
             if !resolutionValue.isEmpty { pairs.append(("resolution", .string(resolutionValue))) }
             body = .object(pairs)
-        default:
+        case "VideoGrok", "VideoZhipu", "VideoVidu", "VideoTogether", "VideoMinimax":
             // Shared {model, prompt} arm (Grok / Zhipu / Vidu / Together /
             // MiniMax). Image-to-video (BUG-010): a seed frame inlines as a data
             // URL at xAI's image.url field (absent on the text-to-video hot path).
@@ -421,6 +421,8 @@ public struct Video: Sendable {
                 pairs.append(("image", .object([("url", .string(seed))])))
             }
             body = .object(pairs)
+        default:
+            throw LLMKitError.unsupported("video submit: unsupported wire shape \"\(vgCfg.wireShape)\"")
         }
 
         // {model} in the submit endpoint is substituted with the per-call model

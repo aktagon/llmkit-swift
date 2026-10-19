@@ -115,14 +115,7 @@ public struct Speech: Sendable {
                     config: config, endpoint: endpoint, apiKey: apiKey, model: model, baseURLOverride: speechBase
                 )
 
-            let body: JSONValue
-            switch sgCfg.wireShape {
-            case "SpeechOpenAI": body = buildOpenAIBody(model: model, voice: voice, text: text, style: style)
-            case "SpeechGemini": body = buildGeminiBody(model: model, voice: voice, text: text)
-            case "SpeechMiniMax": body = buildMiniMaxBody(model: model, voice: voice, text: text)
-            case "SpeechXAI": body = buildXAIBody(voice: voice, text: text)
-            default: body = buildInworldBody(model: model, voice: voice, text: text)
-            }
+            let body = try requestBody(sgCfg, model: model, voice: voice, text: text)
 
             // The OpenAI shape returns binary audio (not JSON), so the reply is
             // read as raw bytes and must not be lossily UTF-8 decoded before the
@@ -207,31 +200,49 @@ public struct Speech: Sendable {
 
     // MARK: - Request bodies
 
-    /// Inworld `/tts/v1/voice` body. Slice 1 sends a fixed audioConfig
-    /// (LINEAR16/22050 -> WAV) and BALANCED delivery; format/sample-rate selection
-    /// is a later slice (ADR-049 OQ-5).
-    private func buildInworldBody(model: String, voice: String, text: String) -> JSONValue {
+    /// Selects the request body by the config's wire shape (BUG-105).
+    func requestBody(_ sgCfg: SpeechGenDef, model: String, voice: String, text: String) throws -> JSONValue {
+        switch sgCfg.wireShape {
+        case "SpeechInworld":
+            return buildInworldBody(model: model, voice: voice, text: text, format: sgCfg.requestedOutputFormat)
+        case "SpeechOpenAI":
+            return buildOpenAIBody(
+                model: model, voice: voice, text: text, style: style, format: sgCfg.requestedOutputFormat)
+        case "SpeechGemini": return buildGeminiBody(model: model, voice: voice, text: text)
+        case "SpeechMiniMax": return buildMiniMaxBody(model: model, voice: voice, text: text)
+        case "SpeechXAI": return buildXAIBody(voice: voice, text: text, format: sgCfg.requestedOutputFormat)
+        default:
+            throw LLMKitError.unsupported("speech: unsupported wire shape \"\(sgCfg.wireShape)\"")
+        }
+    }
+
+    /// Inworld `/tts/v1/voice` body. Sends the config's requested format
+    /// (LINEAR16) at a fixed 22050 Hz and BALANCED delivery; sample-rate
+    /// selection is a later slice (ADR-049 OQ-5).
+    private func buildInworldBody(model: String, voice: String, text: String, format: String) -> JSONValue {
         .object([
             ("text", .string(text)),
             ("voiceId", .string(voice)),
             ("modelId", .string(model)),
             ("audioConfig", .object([
-                ("audioEncoding", .string("LINEAR16")),
+                ("audioEncoding", .string(format)),
                 ("sampleRateHertz", .int(22050)),
             ])),
             ("deliveryMode", .string("BALANCED")),
         ])
     }
 
-    /// OpenAI `/v1/audio/speech` body. Slice 1 fixes response_format=mp3 (KISS);
-    /// format selection is a later slice (ADR-051). A style is sent as
-    /// `instructions` (BUG-091), which gpt-4o-mini-tts accepts.
-    private func buildOpenAIBody(model: String, voice: String, text: String, style: String) -> JSONValue {
+    /// OpenAI `/v1/audio/speech` body. response_format is the config's
+    /// requested format (mp3). A style is sent as `instructions` (BUG-091),
+    /// which gpt-4o-mini-tts accepts.
+    private func buildOpenAIBody(
+        model: String, voice: String, text: String, style: String, format: String
+    ) -> JSONValue {
         var fields: [(String, JSONValue)] = [
             ("model", .string(model)),
             ("input", .string(text)),
             ("voice", .string(voice)),
-            ("response_format", .string("mp3")),
+            ("response_format", .string(format)),
         ]
         if !style.isEmpty { fields.append(("instructions", .string(style))) }
         return .object(fields)
@@ -252,12 +263,12 @@ public struct Speech: Sendable {
     /// language is always "auto" (llmkit has no language option), and
     /// with_timestamps is never sent: it switches the reply from raw audio
     /// bytes to JSON.
-    private func buildXAIBody(voice: String, text: String) -> JSONValue {
+    private func buildXAIBody(voice: String, text: String, format: String) -> JSONValue {
         .object([
             ("text", .string(text)),
             ("voice_id", .string(voice)),
             ("language", .string("auto")),
-            ("output_format", .object([("codec", .string("mp3"))])),
+            ("output_format", .object([("codec", .string(format))])),
         ])
     }
 
@@ -315,7 +326,7 @@ public struct Speech: Sendable {
     /// hex-decodes `data.audio` and raises on a nonzero `base_resp`. A 2xx body that does not parse
     /// to audio is a decoding error (HANDOFF-036 A5) — never a silent empty
     /// clip.
-    private func parseResponse(
+    func parseResponse(
         provider: String, encoding: String, fallbackMime: String, body: Data
     ) throws -> SpeechResponse {
         var bytes: [UInt8] = []
@@ -326,7 +337,7 @@ public struct Speech: Sendable {
             (bytes, mime) = try parseInteractionSteps(provider: provider, fallbackMime: fallbackMime, body: body)
         } else if encoding == "hexEnvelope" {
             bytes = try parseHexEnvelope(provider: provider, body: body)
-        } else {
+        } else if encoding == "base64Envelope" {
             let raw: JSONValue
             do {
                 raw = try JSONValue.parse(String(decoding: body, as: UTF8.self))
@@ -340,6 +351,8 @@ public struct Speech: Sendable {
                 throw LLMKitError.decoding("\(provider) speech response: invalid base64 in audioContent")
             }
             bytes = [UInt8](decoded)
+        } else {
+            throw LLMKitError.unsupported("speech: unsupported audio encoding \"\(encoding)\"")
         }
         return SpeechResponse(
             audio: AudioData(mimeType: mime, bytes: bytes),
