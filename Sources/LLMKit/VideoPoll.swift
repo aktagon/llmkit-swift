@@ -338,7 +338,7 @@ enum VideoWire {
             // with one more GET (file-retrieve) before returning.
             return try await resolveFile(vgCfg, raw, base: base, headers: headers, http: http, mime: mime)
         default:
-            return VideoResponse.default()
+            throw LLMKitError.unsupported("video poll: unsupported wire shape \"\(vgCfg.wireShape)\"")
         }
     }
 
