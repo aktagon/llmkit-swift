@@ -68,9 +68,9 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     modelId: "grok-tts",
                     label: "Grok TTS",
                     outputMime: "audio/mpeg",
-                    sampleRateHz: 0,
+                    sampleRateHz: 24000,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
             ],
             baseURL: ""
@@ -103,7 +103,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     outputMime: "audio/wav",
                     sampleRateHz: 0,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
             ],
             baseURL: ""
@@ -120,7 +120,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
                     modelId: "speech-2.6-turbo",
@@ -128,7 +128,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
                     modelId: "speech-2.8-hd",
@@ -136,7 +136,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
                     modelId: "speech-2.8-turbo",
@@ -144,7 +144,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
             ],
             baseURL: "https://api.minimax.io"
@@ -193,7 +193,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Eleven v3",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: 1,
                     supportsSpeechStyle: false
                 ),
                 SpeechModelDef(
@@ -201,7 +201,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Eleven v4",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: 1,
                     supportsSpeechStyle: false
                 ),
                 SpeechModelDef(
@@ -209,7 +209,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Eleven v4 Turbo",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: 1,
                     supportsSpeechStyle: false
                 ),
                 SpeechModelDef(
@@ -218,7 +218,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
                     modelId: "fish-audio/s2.1-pro",
@@ -226,7 +226,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
                     modelId: "google/gemini-3.1-flash-tts-preview",
@@ -234,7 +234,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
                     modelId: "google/gemini-3.8-flash-lite-tts",
@@ -242,7 +242,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
                     modelId: "google/gemini-3.8-flash-tts",
@@ -250,14 +250,14 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
                     maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
                     modelId: "hexgrad/kokoro-82m",
                     label: "Kokoro 82M",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: 1,
                     supportsSpeechStyle: false
                 ),
                 SpeechModelDef(
@@ -265,7 +265,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Grok Voice TTS 1.0",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: 1,
                     supportsSpeechStyle: false
                 ),
             ],
