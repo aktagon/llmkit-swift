@@ -58,6 +58,23 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
             ],
             baseURL: ""
         )
+    case .grok:
+        return SpeechGenDef(
+            wireShape: "SpeechXAI",
+            audioResponseEncoding: "rawBody",
+            genEndpoint: "/v1/tts",
+            models: [
+                SpeechModelDef(
+                    modelId: "grok-tts",
+                    label: "Grok TTS",
+                    outputMime: "audio/mpeg",
+                    sampleRateHz: 0,
+                    maxSpeakers: 0,
+                    supportsSpeechStyle: false
+                ),
+            ],
+            baseURL: ""
+        )
     case .inworld:
         return SpeechGenDef(
             wireShape: "SpeechInworld",
