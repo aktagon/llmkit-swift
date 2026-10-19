@@ -40,8 +40,8 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Gemini 3.1 Flash TTS Preview",
                     outputMime: "audio/l16",
                     sampleRateHz: 0,
-                    maxSpeakers: nil,
-                    supportsSpeechStyle: nil
+                    maxSpeakers: 1,
+                    supportsSpeechStyle: false
                 ),
                 SpeechModelDef(
                     modelId: "gemini-3.8-flash-lite-tts",

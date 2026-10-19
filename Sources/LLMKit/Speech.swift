@@ -182,8 +182,9 @@ public struct Speech: Sendable {
     /// Checks the request against what the config's body can carry and the
     /// model's stated speaker and style facts (BUG-091). An unknown model fact
     /// (nil) sends the request; only a stated false or a stated speaker count
-    /// that does not match blocks it (decision 009, HANDOFF-099).
-    private func validateModel(_ config: SpeechGenDef, _ model: SpeechModelDef) throws {
+    /// that does not match blocks it (decision 009, HANDOFF-099). Internal,
+    /// not private, so the tests can reach it through `@testable import`.
+    func validateModel(_ config: SpeechGenDef, _ model: SpeechModelDef) throws {
         if !speakers.isEmpty {
             if !config.multiSpeaker || model.maxSpeakers == 1 {
                 throw LLMKitError.validation(
