@@ -7,10 +7,10 @@ public struct SpeechModelDef: Sendable, Equatable {
     public let outputMime: String
     /// ADR-037 advisory fact (queryable, never gated); 0 when unverified.
     public let sampleRateHz: Int
-    /// Speakers a multi-speaker request declares; 0 = one voice only (BUG-091).
-    public let maxSpeakers: Int
-    /// Whether a style (style, addStyledLine) is sent to this model (BUG-091).
-    public let supportsSpeechStyle: Bool
+    /// Speakers the model takes (1 or 2); nil = unknown, which sends (decision 009).
+    public let maxSpeakers: Int?
+    /// Whether the provider accepts a style; nil = unknown, only false blocks (decision 009).
+    public let supportsSpeechStyle: Bool?
 }
 
 public struct SpeechGenDef: Sendable, Equatable {
@@ -21,6 +21,10 @@ public struct SpeechGenDef: Sendable, Equatable {
     public let models: [SpeechModelDef]
     /// Speech API base when it differs from the chat base; "" = use chat base.
     public let baseURL: String
+    /// llmkit's body for this config can carry a style; false rejects every style (HANDOFF-099).
+    public let carriesSpeechStyle: Bool
+    /// The config has a multi-speaker body; false rejects every speaker request (HANDOFF-099).
+    public let multiSpeaker: Bool
 }
 
 public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
@@ -36,8 +40,8 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Gemini 3.1 Flash TTS Preview",
                     outputMime: "audio/l16",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
-                    supportsSpeechStyle: false
+                    maxSpeakers: nil,
+                    supportsSpeechStyle: nil
                 ),
                 SpeechModelDef(
                     modelId: "gemini-3.8-flash-lite-tts",
@@ -56,7 +60,9 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     supportsSpeechStyle: true
                 ),
             ],
-            baseURL: ""
+            baseURL: "",
+            carriesSpeechStyle: true,
+            multiSpeaker: true
         )
     case .grok:
         return SpeechGenDef(
@@ -69,11 +75,13 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Grok TTS",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 24000,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
             ],
-            baseURL: ""
+            baseURL: "",
+            carriesSpeechStyle: false,
+            multiSpeaker: false
         )
     case .inworld:
         return SpeechGenDef(
@@ -86,7 +94,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Inworld TTS 1.5 Max",
                     outputMime: "audio/wav",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: false
                 ),
                 SpeechModelDef(
@@ -94,7 +102,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Inworld TTS 1.5 Mini",
                     outputMime: "audio/wav",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: false
                 ),
                 SpeechModelDef(
@@ -102,11 +110,13 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Inworld TTS 2",
                     outputMime: "audio/wav",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
             ],
-            baseURL: ""
+            baseURL: "",
+            carriesSpeechStyle: false,
+            multiSpeaker: false
         )
     case .minimax:
         return SpeechGenDef(
@@ -119,7 +129,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "MiniMax Speech 2.6 HD",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
@@ -127,7 +137,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "MiniMax Speech 2.6 Turbo",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
@@ -135,7 +145,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "MiniMax Speech 2.8 HD",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
@@ -143,11 +153,13 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "MiniMax Speech 2.8 Turbo",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
             ],
-            baseURL: "https://api.minimax.io"
+            baseURL: "https://api.minimax.io",
+            carriesSpeechStyle: false,
+            multiSpeaker: false
         )
     case .openai:
         return SpeechGenDef(
@@ -160,7 +172,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "GPT-4o mini TTS",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
@@ -168,7 +180,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "TTS 1",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: false
                 ),
                 SpeechModelDef(
@@ -176,11 +188,13 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "TTS 1 HD",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: false
                 ),
             ],
-            baseURL: ""
+            baseURL: "",
+            carriesSpeechStyle: true,
+            multiSpeaker: false
         )
     case .openrouter:
         return SpeechGenDef(
@@ -217,7 +231,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Fish Audio Drama 3",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
@@ -225,7 +239,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Fish Audio S2.1 Pro",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
@@ -233,7 +247,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Gemini 3.1 Flash TTS Preview",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
@@ -241,7 +255,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Gemini 3.8 Flash Lite TTS",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
@@ -249,7 +263,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     label: "Gemini 3.8 Flash TTS",
                     outputMime: "audio/mpeg",
                     sampleRateHz: 0,
-                    maxSpeakers: 0,
+                    maxSpeakers: nil,
                     supportsSpeechStyle: true
                 ),
                 SpeechModelDef(
@@ -269,7 +283,9 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
                     supportsSpeechStyle: false
                 ),
             ],
-            baseURL: ""
+            baseURL: "",
+            carriesSpeechStyle: false,
+            multiSpeaker: false
         )
     default: return nil
     }
