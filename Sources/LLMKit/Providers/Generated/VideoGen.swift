@@ -94,7 +94,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "4k", "720p"],
-                    aspectRatios: [],
+                    aspectRatios: ["16:9", "9:16"],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -106,7 +106,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
-                    aspectRatios: [],
+                    aspectRatios: ["16:9", "9:16"],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -118,7 +118,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
-                    aspectRatios: [],
+                    aspectRatios: ["16:9", "9:16"],
                     maxInputImages: 1
                 ),
             ]
@@ -147,7 +147,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 15,
                     outputMime: "video/mp4",
                     resolutions: ["480p", "720p"],
-                    aspectRatios: [],
+                    aspectRatios: ["16:9", "1:1", "21:9", "2:3", "3:2", "3:4", "4:3", "5:2", "9:16"],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -159,7 +159,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 15,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "480p", "720p"],
-                    aspectRatios: [],
+                    aspectRatios: ["16:9", "1:1", "21:9", "2:3", "3:2", "3:4", "4:3", "5:2", "9:16"],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -171,7 +171,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 15,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "480p", "720p"],
-                    aspectRatios: [],
+                    aspectRatios: ["16:9", "1:1", "21:9", "2:3", "3:2", "3:4", "4:3", "5:2", "9:16"],
                     maxInputImages: 1
                 ),
             ]
@@ -476,7 +476,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
-                    aspectRatios: [],
+                    aspectRatios: ["16:9", "9:16"],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -488,7 +488,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "4k", "720p"],
-                    aspectRatios: [],
+                    aspectRatios: ["16:9", "9:16"],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -500,7 +500,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
-                    aspectRatios: [],
+                    aspectRatios: ["16:9", "9:16"],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -512,7 +512,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
-                    aspectRatios: [],
+                    aspectRatios: ["16:9", "9:16"],
                     maxInputImages: 0
                 ),
             ]
