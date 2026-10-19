@@ -17,6 +17,8 @@ public struct SpeechGenDef: Sendable, Equatable {
     public let wireShape: String
     /// audioResponseEncoding: "base64Envelope" | "rawBody" | "base64InteractionSteps" | "hexEnvelope" (ADR-051).
     public let audioResponseEncoding: String
+    /// requestedOutputFormat: the format token the body sends (mp3, LINEAR16); "" = the body sends no format (HANDOFF-098).
+    public let requestedOutputFormat: String
     public let genEndpoint: String
     public let models: [SpeechModelDef]
     /// Speech API base when it differs from the chat base; "" = use chat base.
@@ -29,6 +31,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
         return SpeechGenDef(
             wireShape: "SpeechGemini",
             audioResponseEncoding: "base64InteractionSteps",
+            requestedOutputFormat: "",
             genEndpoint: "/v1beta/interactions",
             models: [
                 SpeechModelDef(
@@ -62,6 +65,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
         return SpeechGenDef(
             wireShape: "SpeechXAI",
             audioResponseEncoding: "rawBody",
+            requestedOutputFormat: "mp3",
             genEndpoint: "/v1/tts",
             models: [
                 SpeechModelDef(
@@ -79,6 +83,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
         return SpeechGenDef(
             wireShape: "SpeechInworld",
             audioResponseEncoding: "base64Envelope",
+            requestedOutputFormat: "LINEAR16",
             genEndpoint: "/tts/v1/voice",
             models: [
                 SpeechModelDef(
@@ -112,6 +117,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
         return SpeechGenDef(
             wireShape: "SpeechMiniMax",
             audioResponseEncoding: "hexEnvelope",
+            requestedOutputFormat: "",
             genEndpoint: "/v1/t2a_v2",
             models: [
                 SpeechModelDef(
@@ -153,6 +159,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
         return SpeechGenDef(
             wireShape: "SpeechOpenAI",
             audioResponseEncoding: "rawBody",
+            requestedOutputFormat: "mp3",
             genEndpoint: "/v1/audio/speech",
             models: [
                 SpeechModelDef(
@@ -186,6 +193,7 @@ public func speechGenConfig(_ provider: ProviderName) -> SpeechGenDef? {
         return SpeechGenDef(
             wireShape: "SpeechOpenAI",
             audioResponseEncoding: "rawBody",
+            requestedOutputFormat: "mp3",
             genEndpoint: "/v1/audio/speech",
             models: [
                 SpeechModelDef(
