@@ -35,6 +35,12 @@ public struct Video: Sendable {
     var lastFrameImage: MediaRef?
     /// Asset reference images, in caller order (BUG-089).
     var referenceImages: [MediaRef] = []
+    /// Video length in whole seconds; 0 means unset (HANDOFF-097).
+    var durationSeconds: Int = 0
+    /// Output aspect ratio, such as "16:9"; empty means unset (HANDOFF-097).
+    var aspectRatioValue: String = ""
+    /// Output resolution, such as "720p"; empty means unset (HANDOFF-097).
+    var resolutionValue: String = ""
     /// Caller S3 destination URI for output-uri delivery (Bedrock Nova Reel).
     var outputURIValue: String = ""
     var rawOptIn: Bool = false
@@ -69,6 +75,18 @@ public struct Video: Sendable {
     public func addReferenceImage(_ mimeType: String, _ data: Data) -> Video {
         with { $0.referenceImages.append(MediaRef(mimeType: mimeType, bytes: [UInt8](data))) }
     }
+
+    /// Set the video length in whole seconds. Only OpenRouter sends it; a
+    /// length above the model's maximum is rejected before send (HANDOFF-097).
+    public func duration(_ seconds: Int) -> Video { with { $0.durationSeconds = seconds } }
+
+    /// Set the output aspect ratio, such as "16:9". Only OpenRouter sends it; a
+    /// ratio the model does not list is rejected before send (HANDOFF-097).
+    public func aspectRatio(_ ratio: String) -> Video { with { $0.aspectRatioValue = ratio } }
+
+    /// Set the output resolution, such as "720p". Only OpenRouter sends it; a
+    /// resolution the model does not list is rejected before send (HANDOFF-097).
+    public func resolution(_ resolution: String) -> Video { with { $0.resolutionValue = resolution } }
 
     /// Set the caller-supplied destination S3 URI (required by output-uri
     /// delivery providers, e.g. Bedrock Nova Reel; ignored otherwise).
@@ -177,6 +195,7 @@ public struct Video: Sendable {
             )
         }
         try validateFrames(modelDef: modelDef, imageCount: imageCount)
+        try validateOptions(modelDef: modelDef, vgCfg: vgCfg, slug: slug)
         // ADR-096: the carried inputs select the submit request; a config with
         // no such variant cannot send it.
         let variant = try selectRequestVariant(
@@ -221,6 +240,49 @@ public struct Video: Sendable {
         }
         if last, imageCount == 0 {
             throw LLMKitError.validation(field: "last_frame", message: "requires a first frame")
+        }
+    }
+
+    /// Rejects a duration, aspect ratio or resolution the provider or the model
+    /// cannot take, before any HTTP call (HANDOFF-097). Same rules, order and
+    /// messages as Go's `validateVideoOptions`:
+    ///  1. A set option on a wire shape other than VideoOpenRouter, naming the
+    ///     first set one in the order duration, aspect_ratio, resolution.
+    ///  2. A negative duration.
+    ///  3. A duration above the model's `maxDurationSeconds` (0 = no known limit).
+    ///  4. A resolution the model does not list (empty list = no fixed set).
+    ///  5. An aspect ratio the model does not list (empty list = no fixed set).
+    private func validateOptions(modelDef: VideoModelDef, vgCfg: VideoGenDef, slug: String) throws {
+        if vgCfg.wireShape != "VideoOpenRouter" {
+            let set = [
+                ("duration", durationSeconds != 0),
+                ("aspect_ratio", !aspectRatioValue.isEmpty),
+                ("resolution", !resolutionValue.isEmpty),
+            ]
+            if let (field, _) = set.first(where: { $0.1 }) {
+                throw LLMKitError.validation(field: field, message: "\(slug) video does not send \(field)")
+            }
+            return
+        }
+        let max = modelDef.maxDurationSeconds
+        if durationSeconds < 0 {
+            throw LLMKitError.validation(field: "duration", message: "must be positive")
+        }
+        if durationSeconds > 0, max > 0, durationSeconds > max {
+            throw LLMKitError.validation(
+                field: "duration",
+                message: "\(modelDef.modelId) takes at most \(max) seconds, got \(durationSeconds)")
+        }
+        if !resolutionValue.isEmpty, !modelDef.resolutions.isEmpty,
+           !modelDef.resolutions.contains(resolutionValue) {
+            throw LLMKitError.validation(
+                field: "resolution", message: "\(modelDef.modelId) does not support resolution \(resolutionValue)")
+        }
+        if !aspectRatioValue.isEmpty, !modelDef.aspectRatios.isEmpty,
+           !modelDef.aspectRatios.contains(aspectRatioValue) {
+            throw LLMKitError.validation(
+                field: "aspect_ratio",
+                message: "\(modelDef.modelId) does not support aspect ratio \(aspectRatioValue)")
         }
     }
 
@@ -340,6 +402,12 @@ public struct Video: Sendable {
                 if let last = lastFrameImage { frames.append(openRouterFrame(last, "last_frame")) }
                 pairs.append(("frame_images", .array(frames)))
             }
+            // Video options (HANDOFF-097): body-root fields, each sent only when
+            // set, so the prompt-only body stays {model, prompt}. duration is a
+            // JSON integer; validateOptions has already checked each value.
+            if durationSeconds > 0 { pairs.append(("duration", .int(Int64(durationSeconds)))) }
+            if !aspectRatioValue.isEmpty { pairs.append(("aspect_ratio", .string(aspectRatioValue))) }
+            if !resolutionValue.isEmpty { pairs.append(("resolution", .string(resolutionValue))) }
             body = .object(pairs)
         default:
             // Shared {model, prompt} arm (Grok / Zhipu / Vidu / Together /
