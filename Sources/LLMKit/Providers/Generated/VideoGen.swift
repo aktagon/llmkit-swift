@@ -12,6 +12,8 @@ public struct VideoModelDef: Sendable, Equatable {
     public let maxDurationSeconds: Int
     public let outputMime: String
     public let resolutions: [String]
+    /// Accepted aspect ratios (e.g. "16:9"); empty = no fixed set.
+    public let aspectRatios: [String]
     /// 0 = no llmkit limit, the provider decides volume (BUG-011).
     public let maxInputImages: Int
 }
@@ -61,6 +63,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 6,
                     outputMime: "video/mp4",
                     resolutions: ["720p"],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
             ]
@@ -91,6 +94,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "4k", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -102,6 +106,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -113,6 +118,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 1
                 ),
             ]
@@ -141,6 +147,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 15,
                     outputMime: "video/mp4",
                     resolutions: ["480p", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -152,6 +159,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 15,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "480p", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -163,6 +171,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 15,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "480p", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 1
                 ),
             ]
@@ -190,6 +199,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 6,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "768p"],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
             ]
@@ -216,9 +226,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     supportsImageToVideo: true,
                     supportsLastFrame: true,
                     supportsReferenceImages: false,
-                    maxDurationSeconds: 0,
+                    maxDurationSeconds: 30,
                     outputMime: "video/mp4",
-                    resolutions: [],
+                    resolutions: ["1080p", "480p", "720p"],
+                    aspectRatios: ["16:9", "1:1", "3:4", "4:3", "9:16"],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -227,9 +238,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     supportsImageToVideo: true,
                     supportsLastFrame: true,
                     supportsReferenceImages: false,
-                    maxDurationSeconds: 0,
+                    maxDurationSeconds: 15,
                     outputMime: "video/mp4",
-                    resolutions: [],
+                    resolutions: ["1080p", "480p", "4K", "720p"],
+                    aspectRatios: ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16"],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -238,9 +250,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     supportsImageToVideo: true,
                     supportsLastFrame: true,
                     supportsReferenceImages: false,
-                    maxDurationSeconds: 0,
+                    maxDurationSeconds: 15,
                     outputMime: "video/mp4",
-                    resolutions: [],
+                    resolutions: ["480p", "720p"],
+                    aspectRatios: ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16"],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -249,9 +262,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     supportsImageToVideo: true,
                     supportsLastFrame: true,
                     supportsReferenceImages: false,
-                    maxDurationSeconds: 0,
+                    maxDurationSeconds: 30,
                     outputMime: "video/mp4",
-                    resolutions: [],
+                    resolutions: ["480p", "720p"],
+                    aspectRatios: ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16"],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -260,9 +274,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     supportsImageToVideo: true,
                     supportsLastFrame: true,
                     supportsReferenceImages: false,
-                    maxDurationSeconds: 0,
+                    maxDurationSeconds: 8,
                     outputMime: "video/mp4",
-                    resolutions: [],
+                    resolutions: ["1080p", "4K", "720p"],
+                    aspectRatios: ["16:9", "9:16"],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -271,9 +286,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     supportsImageToVideo: true,
                     supportsLastFrame: true,
                     supportsReferenceImages: false,
-                    maxDurationSeconds: 0,
+                    maxDurationSeconds: 8,
                     outputMime: "video/mp4",
-                    resolutions: [],
+                    resolutions: ["1080p", "720p"],
+                    aspectRatios: ["16:9", "9:16"],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -282,9 +298,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     supportsImageToVideo: true,
                     supportsLastFrame: false,
                     supportsReferenceImages: false,
-                    maxDurationSeconds: 0,
+                    maxDurationSeconds: 15,
                     outputMime: "video/mp4",
-                    resolutions: [],
+                    resolutions: ["2K", "480p", "768p"],
+                    aspectRatios: ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16"],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -293,9 +310,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     supportsImageToVideo: true,
                     supportsLastFrame: true,
                     supportsReferenceImages: false,
-                    maxDurationSeconds: 0,
+                    maxDurationSeconds: 15,
                     outputMime: "video/mp4",
-                    resolutions: [],
+                    resolutions: ["720p"],
+                    aspectRatios: ["16:9", "1:1", "9:16"],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -304,9 +322,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     supportsImageToVideo: true,
                     supportsLastFrame: true,
                     supportsReferenceImages: false,
-                    maxDurationSeconds: 0,
+                    maxDurationSeconds: 15,
                     outputMime: "video/mp4",
-                    resolutions: [],
+                    resolutions: ["2K"],
+                    aspectRatios: ["16:9", "1:1", "21:9", "3:4", "4:3", "9:16"],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -315,9 +334,10 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     supportsImageToVideo: true,
                     supportsLastFrame: false,
                     supportsReferenceImages: false,
-                    maxDurationSeconds: 0,
+                    maxDurationSeconds: 15,
                     outputMime: "video/mp4",
-                    resolutions: [],
+                    resolutions: ["1080p", "480p", "720p"],
+                    aspectRatios: ["16:9", "1:1", "2:3", "3:2", "3:4", "4:3", "9:16"],
                     maxInputImages: 0
                 ),
             ]
@@ -345,6 +365,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: [],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -356,6 +377,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: [],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -367,6 +389,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 15,
                     outputMime: "video/mp4",
                     resolutions: [],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
             ]
@@ -394,6 +417,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 5,
                     outputMime: "video/mp4",
                     resolutions: ["720p"],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
             ]
@@ -421,6 +445,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 6,
                     outputMime: "video/mp4",
                     resolutions: ["720p"],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
             ]
@@ -451,6 +476,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -462,6 +488,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "4k", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -473,6 +500,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 1
                 ),
                 VideoModelDef(
@@ -484,6 +512,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 8,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
             ]
@@ -511,6 +540,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 16,
                     outputMime: "video/mp4",
                     resolutions: [],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -522,6 +552,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 16,
                     outputMime: "video/mp4",
                     resolutions: [],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
                 VideoModelDef(
@@ -533,6 +564,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 16,
                     outputMime: "video/mp4",
                     resolutions: [],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
             ]
@@ -560,6 +592,7 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                     maxDurationSeconds: 10,
                     outputMime: "video/mp4",
                     resolutions: ["1080p", "4k", "720p"],
+                    aspectRatios: [],
                     maxInputImages: 0
                 ),
             ]
