@@ -76,16 +76,19 @@ public struct Video: Sendable {
         with { $0.referenceImages.append(MediaRef(mimeType: mimeType, bytes: [UInt8](data))) }
     }
 
-    /// Set the video length in whole seconds. Only OpenRouter sends it; a
-    /// length above the model's maximum is rejected before send (HANDOFF-097).
+    /// Set the video length in whole seconds. OpenRouter, Grok, Google Veo and
+    /// Vertex Veo send it; a length above the model's maximum is rejected
+    /// before send (HANDOFF-097, HANDOFF-100).
     public func duration(_ seconds: Int) -> Video { with { $0.durationSeconds = seconds } }
 
-    /// Set the output aspect ratio, such as "16:9". Only OpenRouter sends it; a
-    /// ratio the model does not list is rejected before send (HANDOFF-097).
+    /// Set the output aspect ratio, such as "16:9". Sent by the same providers
+    /// as `duration`; a ratio the model does not list is rejected before send
+    /// (HANDOFF-097, HANDOFF-100).
     public func aspectRatio(_ ratio: String) -> Video { with { $0.aspectRatioValue = ratio } }
 
-    /// Set the output resolution, such as "720p". Only OpenRouter sends it; a
-    /// resolution the model does not list is rejected before send (HANDOFF-097).
+    /// Set the output resolution, such as "720p". Sent by the same providers as
+    /// `duration`; a resolution the model does not list is rejected before
+    /// send (HANDOFF-097, HANDOFF-100).
     public func resolution(_ resolution: String) -> Video { with { $0.resolutionValue = resolution } }
 
     /// Set the caller-supplied destination S3 URI (required by output-uri
@@ -246,14 +249,17 @@ public struct Video: Sendable {
     /// Rejects a duration, aspect ratio or resolution the provider or the model
     /// cannot take, before any HTTP call (HANDOFF-097). Same rules, order and
     /// messages as Go's `validateVideoOptions`:
-    ///  1. A set option on a wire shape other than VideoOpenRouter, naming the
-    ///     first set one in the order duration, aspect_ratio, resolution.
+    ///  1. A set option on a wire shape with no body field for it (see
+    ///     `videoShapeSendsOptions`), naming the first set one in the order
+    ///     duration, aspect_ratio, resolution.
     ///  2. A negative duration.
     ///  3. A duration above the model's `maxDurationSeconds` (0 = no known limit).
-    ///  4. A resolution the model does not list (empty list = no fixed set).
-    ///  5. An aspect ratio the model does not list (empty list = no fixed set).
+    ///  4. A duration other than 8 with reference images: Veo forces 8 seconds
+    ///     (ai.google.dev/gemini-api/docs/veo, read 2026-10-19; HANDOFF-100).
+    ///  5. A resolution the model does not list (empty list = no fixed set).
+    ///  6. An aspect ratio the model does not list (empty list = no fixed set).
     private func validateOptions(modelDef: VideoModelDef, vgCfg: VideoGenDef, slug: String) throws {
-        if vgCfg.wireShape != "VideoOpenRouter" {
+        if !Self.videoShapeSendsOptions(vgCfg.wireShape) {
             let set = [
                 ("duration", durationSeconds != 0),
                 ("aspect_ratio", !aspectRatioValue.isEmpty),
@@ -273,6 +279,10 @@ public struct Video: Sendable {
                 field: "duration",
                 message: "\(modelDef.modelId) takes at most \(max) seconds, got \(durationSeconds)")
         }
+        if durationSeconds > 0, !referenceImages.isEmpty, durationSeconds != 8 {
+            throw LLMKitError.validation(
+                field: "duration", message: "reference images take 8 seconds, got \(durationSeconds)")
+        }
         if !resolutionValue.isEmpty, !modelDef.resolutions.isEmpty,
            !modelDef.resolutions.contains(resolutionValue) {
             throw LLMKitError.validation(
@@ -284,6 +294,24 @@ public struct Video: Sendable {
                 field: "aspect_ratio",
                 message: "\(modelDef.modelId) does not support aspect ratio \(aspectRatioValue)")
         }
+    }
+
+    /// Whether a video wire shape has body fields for duration, aspect ratio and
+    /// resolution (HANDOFF-097, HANDOFF-100).
+    private static func videoShapeSendsOptions(_ shape: String) -> Bool {
+        ["VideoOpenRouter", "VideoGrok", "VideoVeo", "VideoVertexVeo"].contains(shape)
+    }
+
+    /// The body-root duration, aspect_ratio and resolution of the
+    /// VideoOpenRouter and VideoGrok bodies (HANDOFF-097, HANDOFF-100), each
+    /// only when set, so the prompt-only body stays {model, prompt}. duration
+    /// is a JSON integer; validateOptions has already checked each value.
+    private func rootVideoOptions() -> [(String, JSONValue)] {
+        var pairs: [(String, JSONValue)] = []
+        if durationSeconds > 0 { pairs.append(("duration", .int(Int64(durationSeconds)))) }
+        if !aspectRatioValue.isEmpty { pairs.append(("aspect_ratio", .string(aspectRatioValue))) }
+        if !resolutionValue.isEmpty { pairs.append(("resolution", .string(resolutionValue))) }
+        return pairs
     }
 
     /// The request's carried inputs (ADR-096): reference images, a seed frame
@@ -365,17 +393,26 @@ public struct Video: Sendable {
             if let last = lastFrameImage {
                 instance.append(("lastFrame", veoImage(last)))
             }
-            if referenceImages.isEmpty {
-                body = .object([("instances", .array([.object(instance)]))])
-            } else {
+            var params: [(String, JSONValue)] = []
+            if !referenceImages.isEmpty {
                 instance.append(("referenceImages", .array(referenceImages.map {
                     .object([("image", veoImage($0)), ("referenceType", .string("asset"))])
                 })))
-                body = .object([
-                    ("instances", .array([.object(instance)])),
-                    ("parameters", .object([("durationSeconds", .int(8))])),
-                ])
             }
+            // Video options (HANDOFF-100): parameters.durationSeconds (a JSON
+            // number), aspectRatio and resolution, each only when set. With
+            // reference images validateOptions allows only 8, so a set duration
+            // matches the forced 8.
+            if durationSeconds > 0 {
+                params.append(("durationSeconds", .int(Int64(durationSeconds))))
+            } else if !referenceImages.isEmpty {
+                params.append(("durationSeconds", .int(8)))
+            }
+            if !aspectRatioValue.isEmpty { params.append(("aspectRatio", .string(aspectRatioValue))) }
+            if !resolutionValue.isEmpty { params.append(("resolution", .string(resolutionValue))) }
+            var pairs: [(String, JSONValue)] = [("instances", .array([.object(instance)]))]
+            if !params.isEmpty { pairs.append(("parameters", .object(params))) }
+            body = .object(pairs)
         case "VideoBedrock":
             // Nova Reel carries the model in the BODY (modelId) and writes the
             // mp4 to the caller's S3 bucket.
@@ -402,12 +439,7 @@ public struct Video: Sendable {
                 if let last = lastFrameImage { frames.append(openRouterFrame(last, "last_frame")) }
                 pairs.append(("frame_images", .array(frames)))
             }
-            // Video options (HANDOFF-097): body-root fields, each sent only when
-            // set, so the prompt-only body stays {model, prompt}. duration is a
-            // JSON integer; validateOptions has already checked each value.
-            if durationSeconds > 0 { pairs.append(("duration", .int(Int64(durationSeconds)))) }
-            if !aspectRatioValue.isEmpty { pairs.append(("aspect_ratio", .string(aspectRatioValue))) }
-            if !resolutionValue.isEmpty { pairs.append(("resolution", .string(resolutionValue))) }
+            pairs += rootVideoOptions()
             body = .object(pairs)
         case "VideoGrok", "VideoZhipu", "VideoVidu", "VideoTogether", "VideoMinimax":
             // Shared {model, prompt} arm (Grok / Zhipu / Vidu / Together /
@@ -420,6 +452,9 @@ public struct Video: Sendable {
             if let seed = try seedImageURL(parts) {
                 pairs.append(("image", .object([("url", .string(seed))])))
             }
+            // Only VideoGrok in this arm sends the options (HANDOFF-100); the
+            // other shapes reject a set option in validateOptions.
+            if vgCfg.wireShape == "VideoGrok" { pairs += rootVideoOptions() }
             body = .object(pairs)
         default:
             throw LLMKitError.unsupported("video submit: unsupported wire shape \"\(vgCfg.wireShape)\"")
