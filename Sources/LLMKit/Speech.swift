@@ -7,11 +7,12 @@ import Foundation
 ///
 /// The generated `speechGenConfig(provider)` fact selects both the request body
 /// (`wireShape`) and the audio decode (`audioResponseEncoding`) — never the
-/// provider name. Four shapes ship: `SpeechInworld` (a flat-JSON POST whose reply
+/// provider name. Five shapes ship: `SpeechInworld` (a flat-JSON POST whose reply
 /// carries base64 audio at `audioContent`), `SpeechOpenAI` (a flat-JSON POST
 /// whose reply is RAW audio bytes — never JSON, so the response is read as bytes
 /// and taken verbatim), `SpeechGemini` (Interactions API, base64 audio in
-/// `steps[]`) and `SpeechMiniMax` (hex audio at `data.audio`). Pre-flight validation (model + text or lines required;
+/// `steps[]`), `SpeechMiniMax` (hex audio at `data.audio`) and `SpeechXAI` (a
+/// flat-JSON POST whose reply is RAW audio bytes). Pre-flight validation (model + text or lines required;
 /// voice or speakers; provider supports speech; model known; speakers and
 /// style the model takes, BUG-091) runs before any HTTP call. Voices are
 /// free-form: there is no catalogue. Fires the `speechGeneration` middleware
@@ -119,6 +120,7 @@ public struct Speech: Sendable {
             case "SpeechOpenAI": body = buildOpenAIBody(model: model, voice: voice, text: text, style: style)
             case "SpeechGemini": body = buildGeminiBody(model: model, voice: voice, text: text)
             case "SpeechMiniMax": body = buildMiniMaxBody(model: model, voice: voice, text: text)
+            case "SpeechXAI": body = buildXAIBody(voice: voice, text: text)
             default: body = buildInworldBody(model: model, voice: voice, text: text)
             }
 
@@ -246,6 +248,19 @@ public struct Speech: Sendable {
         ])
     }
 
+    /// xAI /v1/tts body (HANDOFF-095). The endpoint has no model field.
+    /// language is always "auto" (llmkit has no language option), and
+    /// with_timestamps is never sent: it switches the reply from raw audio
+    /// bytes to JSON.
+    private func buildXAIBody(voice: String, text: String) -> JSONValue {
+        .object([
+            ("text", .string(text)),
+            ("voice_id", .string(voice)),
+            ("language", .string("auto")),
+            ("output_format", .object([("codec", .string("mp3"))])),
+        ])
+    }
+
     /// Gemini TTS body on the Interactions API (BUG-091): one user_input turn
     /// and an audio response. Single voice: one text item and
     /// `speech_config [{voice}]`; a style annotates the text item.
@@ -294,7 +309,7 @@ public struct Speech: Sendable {
     // MARK: - Response parsing (selected by audioResponseEncoding, never provider name)
 
     /// Decode the synthesized audio per the wire shape's audio response encoding
-    /// (ADR-051 OAA-002). `rawBody` (OpenAI) takes the response body verbatim as
+    /// (ADR-051 OAA-002). `rawBody` (OpenAI, xAI) takes the response body verbatim as
     /// the audio bytes; `base64Envelope` (Inworld) parses a JSON envelope and
     /// base64-decodes the `audioContent` field; `hexEnvelope` (MiniMax)
     /// hex-decodes `data.audio` and raises on a nonzero `base_resp`. A 2xx body that does not parse
