@@ -5,7 +5,7 @@ import Foundation
 /// `VideoGenDef` carries no status paths — so `classify` dispatches on the
 /// `wireShape` fact (the port of Rust's `parse_video_poll`) and `result` extracts
 /// the finished video URL/bytes per shape (the `video_result_from_*` family,
-/// including the MiniMax two-hop file retrieve and the Veo download hop).
+/// including the MiniMax two-hop file retrieve and the OpenRouter download hop).
 struct VideoAdapter: JobAdapter {
     var lc: LifecycleConfig
     var config: LifecycleConfig { lc }
@@ -124,7 +124,7 @@ struct VideoAdapter: JobAdapter {
 
     func result(_ body: PollBody) async throws -> VideoResponse {
         var response = try await VideoWire.result(vgCfg, body.value(), base: base, headers: headers, http: http)
-        // Download delivery (Veo): the poll result placed a temporary fetch URI in
+        // Download delivery (OpenRouter): the poll result placed a temporary fetch URI in
         // VideoData.url; fetch each and fill VideoData.bytes (clearing url, the
         // source-XOR contract VID-004). Vertex is inline-base64 (no url) — no-op.
         if vgCfg.outputDelivery == "DeliveryDownload" {
@@ -247,10 +247,10 @@ enum VideoWire {
             case "Fail": return failed(status, "")
             default: return running(status)
             }
-        case "VideoVeo", "VideoVertexVeo":
+        case "VideoVertexVeo":
             // Operation-based LRO: poll until done==true. A done op with an error
             // object is a terminal failure; otherwise the finished video is in the
-            // response (extracted in result, which guards the empty-uri case).
+            // response (extracted in result, which guards the empty-bytes case).
             guard case let .bool(done)? = raw.member("done"), done else { return running("") }
             if let err = raw.member("error"), case .object = err {
                 return failed("error", raw.stringValue(at: "error.message"))
@@ -303,7 +303,7 @@ enum VideoWire {
             // download step fetches it with the auth headers. The signed urls[]
             // array is a secret and is never read.
             // A completed poll without unsigned_urls[0] is an error, not an
-            // empty success (mirrors the Veo done-without-uri guard).
+            // empty success (mirrors the Vertex Veo done-without-bytes guard).
             let url = stringAt(raw, "unsigned_urls[0]")
             if url.isEmpty {
                 throw LLMKitError.unsupported("video generation: completed but carried no unsigned_urls")
@@ -313,12 +313,6 @@ enum VideoWire {
             let url = raw.stringValue(at: "outputDataConfig.s3OutputDataConfig.s3Uri")
             if url.isEmpty {
                 throw LLMKitError.unsupported("video generation: completed but carried no output s3 uri")
-            }
-            return single(mime: mime, url: url, duration: 0)
-        case "VideoVeo":
-            let url = stringAt(raw, "response.generateVideoResponse.generatedSamples[0].video.uri")
-            if url.isEmpty {
-                throw LLMKitError.unsupported("video generation: operation done but carried no video uri")
             }
             return single(mime: mime, url: url, duration: 0)
         case "VideoVertexVeo":

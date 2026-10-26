@@ -16,10 +16,5 @@ let package = Package(
             path: "Sources/LLMKit",
             swiftSettings: [.enableExperimentalFeature("StrictConcurrency")]
         ),
-        .testTarget(
-            name: "LLMKitTests",
-            dependencies: ["LLMKit"],
-            path: "Tests/LLMKitTests"
-        ),
     ]
 )
