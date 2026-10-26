@@ -79,10 +79,10 @@ public func imageGenConfig(_ provider: ProviderName) -> ImageGenDef? {
                     supportsImageInput: true
                 ),
                 ImageModelDef(
-                    modelId: "gemini-3.1-flash-image-preview",
-                    label: "Nano Banana 2",
+                    modelId: "gemini-nano-banana-2.1",
+                    label: "Nano Banana 2.1",
                     aspectRatios: ["16:9", "1:1", "1:4", "1:8", "21:9", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16"],
-                    imageSizes: ["1K", "2K", "4K", "512"],
+                    imageSizes: ["1K", "2K", "4K"],
                     maxInputImages: 0,
                     supportsImageInput: true
                 ),
