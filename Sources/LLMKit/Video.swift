@@ -12,7 +12,7 @@ import Foundation
 /// seed frame inlined as a data URL at `image.url` (BUG-010), the nested Qwen
 /// `{model, input:{prompt}}` (with the `X-DashScope-Async: enable` header),
 /// PixVerse's five-field body (+ a per-request `Ai-trace-id` header), the
-/// model-in-path Veo / Vertex `{instances:[{prompt}]}`, and Bedrock Nova Reel's
+/// model-in-path Vertex Veo `{instances:[{prompt}]}`, and Bedrock Nova Reel's
 /// SigV4-signed `{modelId, modelInput, outputDataConfig}` (VID-005).
 ///
 /// The generated `VideoHandle` value carries only identity (id + provider + raw +
@@ -76,8 +76,8 @@ public struct Video: Sendable {
         with { $0.referenceImages.append(MediaRef(mimeType: mimeType, bytes: [UInt8](data))) }
     }
 
-    /// Set the video length in whole seconds. OpenRouter, Grok, Google Veo and
-    /// Vertex Veo send it; a length above the model's maximum is rejected
+    /// Set the video length in whole seconds. OpenRouter, Grok and Vertex Veo
+    /// send it; a length above the model's maximum is rejected
     /// before send (HANDOFF-097, HANDOFF-100).
     public func duration(_ seconds: Int) -> Video { with { $0.durationSeconds = seconds } }
 
@@ -212,8 +212,8 @@ public struct Video: Sendable {
         return variant
     }
 
-    /// The most asset reference images a Veo request takes (Gemini API and
-    /// Vertex Veo pages, read 2026-10-15).
+    /// The most asset reference images a Vertex Veo request takes (Vertex Veo
+    /// page, read 2026-10-15).
     static let maxReferenceImages = 3
 
     /// Rejects a last frame or reference images the model or the request
@@ -236,8 +236,8 @@ public struct Video: Sendable {
                 message: "at most \(Self.maxReferenceImages) reference images, got \(refs)")
         }
         if refs > 0, imageCount > 0 || last {
-            // Live 2026-10-15: Veo answers 400 "Unsupported video generation
-            // request"; Vertex documents the inputs as exclusive.
+            // Vertex documents the inputs as exclusive (live 2026-10-15, the
+            // Gemini API Veo answered 400 "Unsupported video generation request").
             throw LLMKitError.validation(
                 field: "reference_images", message: "cannot be combined with a first or last frame")
         }
@@ -299,7 +299,7 @@ public struct Video: Sendable {
     /// Whether a video wire shape has body fields for duration, aspect ratio and
     /// resolution (HANDOFF-097, HANDOFF-100).
     private static func videoShapeSendsOptions(_ shape: String) -> Bool {
-        ["VideoOpenRouter", "VideoGrok", "VideoVeo", "VideoVertexVeo"].contains(shape)
+        ["VideoOpenRouter", "VideoGrok", "VideoVertexVeo"].contains(shape)
     }
 
     /// The body-root duration, aspect_ratio and resolution of the
@@ -376,20 +376,19 @@ public struct Video: Sendable {
                 ("quality", .string("540p")),
                 ("aspect_ratio", .string("16:9")),
             ])
-        case "VideoVeo", "VideoVertexVeo":
-            // Veo / Vertex Veo carry the model in the submit PATH
+        case "VideoVertexVeo":
+            // Vertex Veo carries the model in the submit PATH
             // (:predictLongRunning), so the body has no model field.
             var instance: [(String, JSONValue)] = [("prompt", .string(joinPromptText(parts)))]
             // First frame (BUG-089): the seed rides at instances[0].image as raw
             // base64 + mimeType (no data: prefix), per the Vertex Veo reference
-            // (read 2026-10-15). The Gemini API shape is not yet live-verified.
+            // (read 2026-10-15).
             if let seed = try seedImage(parts) {
                 instance.append(("image", veoImage(seed)))
             }
             // Last frame and asset reference images (BUG-089): same
             // {bytesBase64Encoded, mimeType} wrapper. Reference images force an
-            // 8-second video, sent as the NUMBER 8 on both APIs (live
-            // 2026-10-15: the Gemini API rejects the string "8" its docs show).
+            // 8-second video, sent as the NUMBER 8.
             if let last = lastFrameImage {
                 instance.append(("lastFrame", veoImage(last)))
             }
@@ -491,9 +490,9 @@ public struct Video: Sendable {
         return id
     }
 
-    /// The single image-to-video seed frame (Grok, BUG-010; Veo first frame,
-    /// BUG-089). Returns nil on the text-to-video hot path; errors on more than
-    /// one seed frame (a single-frame condition, so rejecting is honest).
+    /// The single image-to-video seed frame (Grok, BUG-010; Vertex Veo first
+    /// frame, BUG-089). Returns nil on the text-to-video hot path; errors on more
+    /// than one seed frame (a single-frame condition, so rejecting is honest).
     private func seedImage(_ parts: [VideoPart]) throws -> MediaRef? {
         var seed: MediaRef?
         for part in parts {
