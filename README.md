@@ -145,7 +145,7 @@ Reference an already-uploaded file by id with `.file(id)` (see Upload below).
 
 ### Image — text-to-image
 
-Supports Google's Nano Banana 2.1 (`gemini-nano-banana-2.1`) and Pro (`gemini-3-pro-image-preview`); OpenAI's `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, and `gpt-image-1-mini`; xAI's `grok-imagine-image-quality`.
+Supports Google's Nano Banana 2.1 (`gemini-nano-banana-2.1`); OpenAI's `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, and `gpt-image-1-mini`; xAI's `grok-imagine-image-quality`.
 
 ```swift
 let google = Client(provider: .google, apiKey: key)

@@ -103,24 +103,6 @@ let compiledInModels: [CompiledModelDef] = [
         maxOutput: 65536
     ),
     CompiledModelDef(
-        id: "gemini-3-pro-image-preview",
-        provider: .google,
-        capabilities: [.imageGeneration],
-        displayName: "Nano Banana Pro",
-        description: "Gemini 3 Pro Image Preview",
-        contextWindow: 131072,
-        maxOutput: 32768
-    ),
-    CompiledModelDef(
-        id: "gemini-3-pro-preview",
-        provider: .google,
-        capabilities: [.chatCompletion, .reasoning, .toolCalling],
-        displayName: "Gemini 3 Pro Preview",
-        description: "Gemini 3 Pro Preview",
-        contextWindow: 1048576,
-        maxOutput: 65536
-    ),
-    CompiledModelDef(
         id: "gemini-nano-banana-2.1",
         provider: .google,
         capabilities: [.imageGeneration],
