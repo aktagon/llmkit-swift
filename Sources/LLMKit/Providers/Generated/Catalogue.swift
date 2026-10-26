@@ -121,13 +121,13 @@ let compiledInModels: [CompiledModelDef] = [
         maxOutput: 65536
     ),
     CompiledModelDef(
-        id: "gemini-3.1-flash-image-preview",
+        id: "gemini-nano-banana-2.1",
         provider: .google,
         capabilities: [.imageGeneration],
-        displayName: "Nano Banana 2",
-        description: "Gemini 3.1 Flash Image Preview",
-        contextWindow: 65536,
-        maxOutput: 65536
+        displayName: "Nano Banana 2.1",
+        description: "Gemini Nano Banana 2.1",
+        contextWindow: 131072,
+        maxOutput: 32768
     ),
     CompiledModelDef(
         id: "gpt-4o",
