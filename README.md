@@ -398,7 +398,7 @@ let custom = Client(provider: .openai, apiKey: key)
 
 ## Mirror
 
-This repo is a read-only mirror of a private monorepo. File issues here; code patches should target the private source via `christian@aktagon.com`.
+This repo is a read-only mirror. File issues here; send code patches to `christian@aktagon.com`.
 
 ## License
 
