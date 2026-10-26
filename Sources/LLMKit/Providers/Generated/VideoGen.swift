@@ -68,61 +68,6 @@ public func videoGenConfig(_ provider: ProviderName) -> VideoGenDef? {
                 ),
             ]
         )
-    case .google:
-        return VideoGenDef(
-            wireShape: "VideoVeo",
-            outputDelivery: "DeliveryDownload",
-            videoBaseURL: "",
-            variants: [
-                RequestVariant(carries: ["TextOnly"], shape: "", endpoint: "/v1beta/models/{model}:predictLongRunning"),
-                RequestVariant(carries: ["WithReferenceImages"], shape: "", endpoint: "/v1beta/models/{model}:predictLongRunning"),
-                RequestVariant(carries: ["WithSeedFrame"], shape: "", endpoint: "/v1beta/models/{model}:predictLongRunning"),
-                RequestVariant(carries: ["WithSeedFrame", "WithLastFrame"], shape: "", endpoint: "/v1beta/models/{model}:predictLongRunning"),
-            ],
-            pollEndpoint: "/v1beta/{id}",
-            fileEndpoint: "",
-            cancelEndpoint: "",
-            submitHandleField: "name",
-            requiresOutputURI: false,
-            models: [
-                VideoModelDef(
-                    modelId: "veo-3.1-fast-generate-preview",
-                    label: "Veo 3.1 Fast",
-                    supportsImageToVideo: true,
-                    supportsLastFrame: true,
-                    supportsReferenceImages: true,
-                    maxDurationSeconds: 8,
-                    outputMime: "video/mp4",
-                    resolutions: ["1080p", "4k", "720p"],
-                    aspectRatios: ["16:9", "9:16"],
-                    maxInputImages: 1
-                ),
-                VideoModelDef(
-                    modelId: "veo-3.1-generate-preview",
-                    label: "Veo 3.1",
-                    supportsImageToVideo: true,
-                    supportsLastFrame: true,
-                    supportsReferenceImages: true,
-                    maxDurationSeconds: 8,
-                    outputMime: "video/mp4",
-                    resolutions: ["1080p", "720p"],
-                    aspectRatios: ["16:9", "9:16"],
-                    maxInputImages: 1
-                ),
-                VideoModelDef(
-                    modelId: "veo-3.1-lite-generate-preview",
-                    label: "Veo 3.1 Lite",
-                    supportsImageToVideo: true,
-                    supportsLastFrame: true,
-                    supportsReferenceImages: false,
-                    maxDurationSeconds: 8,
-                    outputMime: "video/mp4",
-                    resolutions: ["1080p", "720p"],
-                    aspectRatios: ["16:9", "9:16"],
-                    maxInputImages: 1
-                ),
-            ]
-        )
     case .grok:
         return VideoGenDef(
             wireShape: "VideoGrok",
