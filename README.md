@@ -394,7 +394,7 @@ let custom = Client(provider: .openai, apiKey: key)
     .addTelemetry(Telemetry(export: { payload in spanQueue.enqueue(payload) }))
 ```
 
-`httpExport` is a fail-open, fire-and-forget POST (inject your own `URLSession` via its `session` parameter if you need a custom transport); for high volume hand your own callback into your OTEL SDK's batch processor. The same OTLP span shape is emitted byte-for-byte across all six SDKs. Because `export` is a required field, an enabled-but-no-sink `Telemetry` cannot be constructed.
+`httpExport` is a fail-open, fire-and-forget POST (inject your own `URLSession` via its `session` parameter if you need a custom transport); for high volume hand your own callback into your OTEL SDK's batch processor. The same OTLP span shape is emitted byte-for-byte across all seven SDKs. Because `export` is a required field, an enabled-but-no-sink `Telemetry` cannot be constructed.
 
 ## Mirror
 
