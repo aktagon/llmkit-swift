@@ -257,7 +257,8 @@ func catalogueRunGet(_ scoped: ScopedModels, _ id: String) async throws -> Model
     var postEvent = baseEvent
     let body: Data
     do {
-        body = try await fetchCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: "\(cfg.endpoint)/\(id)")
+        let url = buildCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: "\(cfg.endpoint)/\(id)")
+        body = try await fetchCatalogueURL(scoped: scoped, pcfg: pcfg, url: url)
         postEvent.duration = Date().timeIntervalSince(start)
         Middleware.firePost(mws, postEvent)
     } catch {
@@ -285,15 +286,27 @@ private func paginate(
     var cursor = ""
     var all: [ParsedModelRecord] = []
     while true {
-        let body = try await fetchCatalogueURL(
-            scoped: scoped, pcfg: pcfg, endpoint: cfg.endpoint,
-            cursor: cursor, cursorParam: cfg.cursorParam
-        )
+        let url = listPageURL(scoped: scoped, pcfg: pcfg, cfg: cfg, cursor: cursor)
+        let body = try await fetchCatalogueURL(scoped: scoped, pcfg: pcfg, url: url)
         let page = try dispatchParser(cfg.parserKind, body)
         all.append(contentsOf: page.records)
         if page.nextCursor.isEmpty { return all }
         cursor = page.nextCursor
     }
+}
+
+// The URL of one list page: the endpoint, the provider's fixed list query
+// (BUG-107: OpenRouter lists text-output models only without
+// output_modalities=all), then the cursor. Get-by-id never sends the list query.
+func listPageURL(
+    scoped: ScopedModels, pcfg: ProviderSpec, cfg: CatalogueConfig, cursor: String
+) -> String {
+    var url = buildCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: cfg.endpoint)
+    if !cfg.listQuery.isEmpty {
+        let sep = url.contains("?") ? "&" : "?"
+        url = "\(url)\(sep)\(cfg.listQuery)"
+    }
+    return appendCursor(url, cfg.cursorParam, cursor)
 }
 
 // Splices the pagination cursor into the URL using the cursor query-param
@@ -309,16 +322,8 @@ func appendCursor(_ rawURL: String, _ cursorParam: String, _ cursor: String) -> 
 }
 
 private func fetchCatalogueURL(
-    scoped: ScopedModels, pcfg: ProviderSpec, endpoint: String,
-    cursor: String = "", cursorParam: String = ""
+    scoped: ScopedModels, pcfg: ProviderSpec, url: String
 ) async throws -> Data {
-    // Build the base URL (incl. the QueryParamKey `?key=`) first, THEN append
-    // the pagination cursor — so `?key=...&cursor=...` matches Go/Python's
-    // assembly order (CR-003).
-    let url = appendCursor(
-        buildCatalogueURL(scoped: scoped, pcfg: pcfg, endpoint: endpoint),
-        cursorParam, cursor
-    )
     let headers = buildCatalogueHeaders(scoped: scoped, pcfg: pcfg)
     let statusCode: Int
     let data: Data
