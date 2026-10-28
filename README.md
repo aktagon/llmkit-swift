@@ -1,5 +1,11 @@
 # llmkit (Swift)
 
+> **Maintenance mode.** This SDK receives security fixes only. It gets no new
+> providers, models or features. For active development, use
+> [Go](https://github.com/aktagon/llmkit-go),
+> [TypeScript](https://github.com/aktagon/llmkit-ts) or
+> [Rust](https://github.com/aktagon/llmkit-rust).
+
 One Swift API for Anthropic, OpenAI, Google, and 30+ other providers — including local models through Ollama and vLLM. Switch providers without rewriting your request.
 
 Async/await, built on Foundation and `URLSession`. No third-party dependencies. Apple platforms (macOS 12+, iOS 15+), Swift 5.9+.
